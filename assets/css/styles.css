@@ -1,77 +1,130 @@
-/* OFAST Certificate System - Basic Styles */
+/* OFAST Certificate System - Modern Premium Styles */
 
+/* CSS Variables for consistent theming */
+:root {
+    --cert-primary: #070244;
+    --cert-primary-light: #1a1470;
+    --cert-secondary: #059669;
+    --cert-accent: #6366f1;
+    --cert-bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --cert-card-shadow: 0 10px 40px rgba(7, 2, 68, 0.12);
+    --cert-input-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --cert-border-radius: 16px;
+    --cert-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Form Container */
 .ofst-cert-form-container {
-    max-width: 700px;
-    margin: 40px auto;
+    max-width: 720px;
+    margin: 50px auto;
     padding: 20px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Card with glassmorphism effect */
 .ofst-cert-card {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 30px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: var(--cert-border-radius);
+    padding: 40px 45px;
+    box-shadow: var(--cert-card-shadow);
+    position: relative;
+    overflow: hidden;
 }
 
+.ofst-cert-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--cert-primary) 0%, var(--cert-accent) 50%, var(--cert-secondary) 100%);
+}
+
+/* Title styles */
 .ofst-cert-title {
-    font-size: 28px;
-    color: #070244;
-    margin-bottom: 10px;
+    font-size: 32px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--cert-primary) 0%, var(--cert-accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
     text-align: center;
+    letter-spacing: -0.5px;
 }
 
 .ofst-cert-subtitle {
-    color: #666;
+    color: #64748b;
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 35px;
+    font-size: 15px;
+    font-weight: 400;
 }
 
+/* Notice styles */
 .ofst-cert-notice {
-    padding: 15px;
-    border-radius: 4px;
-    margin-bottom: 20px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 14px;
+    line-height: 1.5;
 }
 
 .ofst-cert-notice.error {
-    background: #fee;
-    border-left: 4px solid #c00;
-    color: #c00;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border: 1px solid #fecaca;
+    color: #dc2626;
 }
 
 .ofst-cert-notice.info {
-    background: #e7f3ff;
-    border-left: 4px solid #2196F3;
-    color: #0c5393;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
 }
 
 .ofst-cert-notice.success {
-    background: #d4edda;
-    border-left: 4px solid #28a745;
-    color: #155724;
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1px solid #bbf7d0;
+    color: #16a34a;
 }
 
+/* Form layout */
 .ofst-cert-form .ofst-form-row {
     display: flex;
-    gap: 15px;
-    margin-bottom: 15px;
+    gap: 20px;
+    margin-bottom: 4px;
 }
 
 .ofst-cert-form .ofst-form-group {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 
 .ofst-cert-form .ofst-form-group.ofst-half {
     flex: 1;
 }
 
+/* Labels */
 .ofst-cert-form label {
     display: block;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
     font-weight: 600;
-    color: #333;
+    font-size: 14px;
+    color: #1e293b;
+    letter-spacing: 0.01em;
 }
 
+.ofst-cert-form .required {
+    color: #ef4444;
+    margin-left: 2px;
+}
+
+/* Input fields with modern styling */
 .ofst-cert-form input[type="text"],
 .ofst-cert-form input[type="email"],
 .ofst-cert-form input[type="tel"],
@@ -80,203 +133,355 @@
 .ofst-cert-form select,
 .ofst-cert-form textarea {
     width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
+    padding: 14px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 15px;
+    font-family: inherit;
+    background: #f8fafc;
+    color: #1e293b;
+    transition: var(--cert-transition);
+    box-shadow: var(--cert-input-shadow);
+}
+
+.ofst-cert-form input::placeholder,
+.ofst-cert-form textarea::placeholder {
+    color: #94a3b8;
+}
+
+.ofst-cert-form input:hover,
+.ofst-cert-form select:hover,
+.ofst-cert-form textarea:hover {
+    border-color: #cbd5e1;
+    background: #fff;
 }
 
 .ofst-cert-form input:focus,
 .ofst-cert-form select:focus,
 .ofst-cert-form textarea:focus {
     outline: none;
-    border-color: #070244;
+    border-color: var(--cert-accent);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1), var(--cert-input-shadow);
 }
 
+/* Select dropdown arrow */
+.ofst-cert-form select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 20px;
+    padding-right: 48px;
+    cursor: pointer;
+}
+
+/* Helper text */
 .ofst-cert-form small {
     display: block;
-    color: #666;
-    font-size: 12px;
-    margin-top: 5px;
+    color: #64748b;
+    font-size: 13px;
+    margin-top: 8px;
+    line-height: 1.4;
 }
 
-.ofst-cert-form .required {
-    color: #c00;
-}
-
+/* Checkbox styles */
 .ofst-cert-form .ofst-checkbox label {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: 12px;
+    cursor: pointer;
+    padding: 16px;
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    transition: var(--cert-transition);
+}
+
+.ofst-cert-form .ofst-checkbox label:hover {
+    border-color: var(--cert-accent);
+    background: #fff;
 }
 
 .ofst-cert-form .ofst-checkbox input[type="checkbox"] {
-    margin-top: 3px;
-    width: auto;
+    margin-top: 2px;
+    width: 20px;
+    height: 20px;
+    accent-color: var(--cert-accent);
+    cursor: pointer;
 }
 
+/* Form actions / Submit button */
 .ofst-form-actions {
-    margin-top: 25px;
+    margin-top: 32px;
     text-align: center;
 }
 
 .ofst-btn {
-    padding: 12px 30px;
+    padding: 16px 40px;
     border: none;
-    border-radius: 4px;
+    border-radius: 12px;
     font-size: 16px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: var(--cert-transition);
+    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 .ofst-btn-primary {
-    background: #070244;
+    background: linear-gradient(135deg, var(--cert-primary) 0%, var(--cert-primary-light) 100%);
     color: #fff;
+    box-shadow: 0 4px 14px rgba(7, 2, 68, 0.35);
 }
 
 .ofst-btn-primary:hover {
-    background: #05031a;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(7, 2, 68, 0.4);
+}
+
+.ofst-btn-primary:active {
+    transform: translateY(0);
 }
 
 .ofst-btn-back {
-    display: inline-block;
-    padding: 8px 15px;
-    background: #f5f5f5;
-    color: #333;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    background: #f1f5f9;
+    color: #475569;
     text-decoration: none;
-    border-radius: 4px;
-    margin-bottom: 20px;
+    border-radius: 10px;
+    margin-bottom: 24px;
+    font-weight: 500;
+    font-size: 14px;
+    transition: var(--cert-transition);
 }
 
 .ofst-btn-back:hover {
-    background: #e0e0e0;
+    background: #e2e8f0;
+    color: #1e293b;
 }
 
-/* Mobile responsive */
-@media (max-width: 768px) {
-    .ofst-cert-form .ofst-form-row {
-        flex-direction: column;
-        gap: 0;
-    }
+/* Template selector cards - enhanced */
+.ofst-template-cards {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+    margin-top: 12px !important;
+}
 
-    .ofst-cert-card {
-        padding: 20px;
-    }
+.ofst-template-card {
+    position: relative !important;
+    padding: 24px 20px !important;
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 16px !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%) !important;
+}
+
+.ofst-template-card:hover {
+    border-color: #cbd5e1 !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08) !important;
+}
+
+.ofst-template-card.active {
+    border-color: var(--cert-primary) !important;
+    background: linear-gradient(145deg, #f5f3ff 0%, #ede9fe 100%) !important;
+    box-shadow: 0 4px 20px rgba(7, 2, 68, 0.15) !important;
 }
 
 /* Verification Results */
 .ofst-cert-result {
     margin-top: 30px;
-    padding: 25px;
-    border-radius: 8px;
+    padding: 28px;
+    border-radius: 16px;
     border: 2px solid;
 }
 
 .ofst-cert-result.success {
-    background: #d4edda;
-    border-color: #28a745;
-    color: #155724;
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border-color: #22c55e;
+    color: #15803d;
 }
 
 .ofst-cert-result.error {
-    background: #f8d7da;
-    border-color: #dc3545;
-    color: #721c24;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border-color: #ef4444;
+    color: #b91c1c;
 }
 
 .cert-details p {
-    margin: 10px 0;
+    margin: 12px 0;
     font-size: 15px;
 }
 
 /* My Certificates Table */
 .ofst-cert-table {
     width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
 }
 
 .ofst-cert-table th,
 .ofst-cert-table td {
-    padding: 12px;
+    padding: 16px 20px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #f1f5f9;
 }
 
 .ofst-cert-table th {
-    background: #f5f5f5;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
     font-weight: 600;
-    color: #333;
+    color: #475569;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-.ofst-cert-table tr:hover {
-    background: #f9f9f9;
+.ofst-cert-table tbody tr {
+    transition: var(--cert-transition);
+}
+
+.ofst-cert-table tbody tr:hover {
+    background: #f8fafc;
 }
 
 .cert-status {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
     font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
 .status-issued {
-    background: #d4edda;
-    color: #155724;
+    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+    color: #15803d;
 }
 
 .status-pending {
-    background: #fff3cd;
-    color: #856404;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #a16207;
 }
 
 .status-rejected {
-    background: #f8d7da;
-    color: #721c24;
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    color: #b91c1c;
 }
 
 .ofst-btn-small {
-    display: inline-block;
-    padding: 6px 12px;
-    background: #070244;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--cert-primary) 0%, var(--cert-primary-light) 100%);
     color: #fff;
     text-decoration: none;
-    border-radius: 4px;
+    border-radius: 8px;
     font-size: 13px;
+    font-weight: 500;
+    transition: var(--cert-transition);
 }
 
 .ofst-btn-small:hover {
-    background: #05031a;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(7, 2, 68, 0.3);
 }
 
 .text-muted {
-    color: #999;
+    color: #94a3b8;
     font-size: 13px;
 }
 
 /* Textarea */
 .ofst-cert-form textarea {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 14px;
+    min-height: 100px;
     resize: vertical;
 }
 
 .ofst-cert-back-btn {
-    margin-bottom: 15px;
+    margin-bottom: 20px;
 }
 
+/* Loading state for button */
+.ofst-btn .btn-loader {
+    display: none;
+}
+
+.ofst-btn.loading .btn-text {
+    display: none;
+}
+
+.ofst-btn.loading .btn-loader {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Mobile responsive */
 @media (max-width: 768px) {
+    .ofst-cert-form-container {
+        padding: 15px;
+        margin: 20px auto;
+    }
+
+    .ofst-cert-card {
+        padding: 28px 24px;
+    }
+
+    .ofst-cert-title {
+        font-size: 26px;
+    }
+
+    .ofst-cert-form .ofst-form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .ofst-template-cards {
+        grid-template-columns: 1fr !important;
+    }
+
+    .ofst-btn {
+        width: 100%;
+        padding: 16px 24px;
+    }
+
     .ofst-cert-table {
         font-size: 13px;
     }
 
     .ofst-cert-table th,
     .ofst-cert-table td {
-        padding: 8px 5px;
+        padding: 12px 10px;
     }
+}
+
+/* Animation for form appearance */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ofst-cert-card {
+    animation: fadeInUp 0.5s ease-out;
 }

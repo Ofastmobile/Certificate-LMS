@@ -21,7 +21,7 @@ function ofst_cert_student_request_form()
 
     $user_id = get_current_user_id();
     $user = wp_get_current_user();
-    $products = ofst_cert_get_user_products($user_id);
+    $all_products = ofst_cert_get_all_user_products($user_id);  // Get ALL products with eligibility
     $min_days = ofst_cert_get_setting('min_days_after_purchase', 3);
     $turnstile_site_key = ofst_cert_get_setting('turnstile_site_key');
 
@@ -33,247 +33,325 @@ function ofst_cert_student_request_form()
             <h2 class="ofst-cert-title">Request Certificate</h2>
             <p class="ofst-cert-subtitle">Complete the form below to request your course completion certificate.</p>
 
-            <?php if (empty($products)): ?>
-                <div class="ofst-cert-notice info">
-                    <p><strong>No courses available for certification yet.</strong></p>
-                    <p>You can request a certificate for courses purchased at least <?php echo esc_html($min_days); ?> days ago and completed.</p>
-                    <p>If you believe this is an error, please contact <a href="mailto:<?php echo esc_attr(ofst_cert_get_setting('support_email')); ?>">support</a>.</p>
+            <form id="ofst-student-cert-form" method="post" class="ofst-cert-form">
+                <?php wp_nonce_field('ofst_student_cert_request', 'ofst_student_cert_nonce'); ?>
+
+                <div class="ofst-form-row" style="display: flex; flex-wrap: wrap; gap: 20px;">
+                    <div class="ofst-form-group ofst-half" style="flex: 1 1 calc(50% - 10px); min-width: 200px;">
+                        <label for="first_name">First Name <span class="required">*</span></label>
+                        <input type="text" id="first_name" name="first_name" value="<?php echo esc_attr($user->first_name); ?>" required>
+                    </div>
+
+                    <div class="ofst-form-group ofst-half" style="flex: 1 1 calc(50% - 10px); min-width: 200px;">
+                        <label for="last_name">Last Name <span class="required">*</span></label>
+                        <input type="text" id="last_name" name="last_name" value="<?php echo esc_attr($user->last_name); ?>" required>
+                    </div>
                 </div>
-            <?php else: ?>
 
-                <form id="ofst-student-cert-form" method="post" class="ofst-cert-form">
-                    <?php wp_nonce_field('ofst_student_cert_request', 'ofst_student_cert_nonce'); ?>
-
-                    <div class="ofst-form-row">
-                        <div class="ofst-form-group ofst-half">
-                            <label for="first_name">First Name <span class="required">*</span></label>
-                            <input type="text" id="first_name" name="first_name" value="<?php echo esc_attr($user->first_name); ?>" required>
-                        </div>
-
-                        <div class="ofst-form-group ofst-half">
-                            <label for="last_name">Last Name <span class="required">*</span></label>
-                            <input type="text" id="last_name" name="last_name" value="<?php echo esc_attr($user->last_name); ?>" required>
-                        </div>
+                <div class="ofst-form-row" style="display: flex; flex-wrap: wrap; gap: 20px;">
+                    <div class="ofst-form-group ofst-half" style="flex: 1 1 calc(50% - 10px); min-width: 200px;">
+                        <label for="email">Email Address <span class="required">*</span></label>
+                        <input type="email" id="email" name="email" value="<?php echo esc_attr($user->user_email); ?>" required>
                     </div>
 
-                    <div class="ofst-form-row">
-                        <div class="ofst-form-group ofst-half">
-                            <label for="email">Email Address <span class="required">*</span></label>
-                            <input type="email" id="email" name="email" value="<?php echo esc_attr($user->user_email); ?>" required>
+                    <div class="ofst-form-group ofst-half" style="flex: 1 1 calc(50% - 10px); min-width: 200px;">
+                        <label for="phone">Phone Number <span class="required">*</span></label>
+                        <input type="tel" id="phone" name="phone" placeholder="+1 234 567 8900" required>
+                    </div>
+                </div>
+
+                <!-- V2.0 MODERN TEMPLATE SELECTOR -->
+                <div class="ofst-form-group">
+                    <label>Choose Certificate Type <span class="required">*</span></label>
+                    <div class="ofst-template-cards" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                        <!-- Ofastshop Card -->
+                        <div class="ofst-template-card active" data-template="ofastshop" style="position: relative; padding: 20px; border: 3px solid #070244; border-radius: 12px; cursor: pointer; transition: all 0.3s; background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%);">
+                            <div style="position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #070244; background: #070244; display: flex; align-items: center; justify-content: center;">
+                                <span style="color: white; font-size: 16px;">✓</span>
+                            </div>
+                            <div style="font-size: 20px; margin-bottom: 8px;">🎓</div>
+                            <h4 style="margin: 0 0 8px 0; color: #070244; font-size: 16px;">Ofastshop</h4>
+                            <p style="margin: 0; font-size: 13px; color: #666;">Course Completion Certificate</p>
                         </div>
 
-                        <div class="ofst-form-group ofst-half">
-                            <label for="phone">Phone Number <span class="required">*</span></label>
-                            <input type="tel" id="phone" name="phone" placeholder="+1 234 567 8900" required>
+                        <!-- Cromemart Card -->
+                        <div class="ofst-template-card" data-template="cromemart" style="position: relative; padding: 20px; border: 3px solid #ddd; border-radius: 12px; cursor: pointer; transition: all 0.3s; background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);">
+                            <div style="position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ddd; background: white;"></div>
+                            <div style="font-size: 20px; margin-bottom: 8px;">🏛️</div>
+                            <h4 style="margin: 0 0 8px 0; color: #059669; font-size: 16px;">Cromemart</h4>
+                            <p style="margin: 0; font-size: 13px; color: #666;">Event Participation Certificate</p>
                         </div>
                     </div>
+                    <input type="hidden" name="template_type" id="template_type" value="ofastshop" required>
+                </div>
 
-                    <!-- V2.0 MODERN TEMPLATE SELECTOR -->
+                <!-- OFASTSHOP FIELDS (Course) -->
+                <div class="ofst-course-fields">
                     <div class="ofst-form-group">
-                        <label>Choose Certificate Type <span class="required">*</span></label>
-                        <div class="ofst-template-cards" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
-                            <!-- Ofastshop Card -->
-                            <div class="ofst-template-card active" data-template="ofastshop" style="position: relative; padding: 20px; border: 3px solid #070244; border-radius: 12px; cursor: pointer; transition: all 0.3s; background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%);">
-                                <div style="position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #070244; background: #070244; display: flex; align-items: center; justify-content: center;">
-                                    <span style="color: white; font-size: 16px;">✓</span>
-                                </div>
-                                <div style="font-size: 20px; margin-bottom: 8px;">🎓</div>
-                                <h4 style="margin: 0 0 8px 0; color: #070244; font-size: 16px;">Ofastshop</h4>
-                                <p style="margin: 0; font-size: 13px; color: #666;">Course Completion Certificate</p>
+                        <label for="product_id">Course Completed <span class="required">*</span></label>
+                        <?php if (empty($all_products)): ?>
+                            <div class="ofst-cert-notice info" style="margin: 10px 0; padding: 12px; font-size: 14px;">
+                                <p style="margin: 0;">You haven't purchased any courses yet. <a href="<?php echo esc_url(function_exists('wc_get_page_permalink') ? wc_get_page_permalink('shop') : home_url('/shop')); ?>">Browse courses</a></p>
                             </div>
-
-                            <!-- Cromemart Card -->
-                            <div class="ofst-template-card" data-template="cromemart" style="position: relative; padding: 20px; border: 3px solid #ddd; border-radius: 12px; cursor: pointer; transition: all 0.3s; background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);">
-                                <div style="position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ddd; background: white;"></div>
-                                <div style="font-size: 20px; margin-bottom: 8px;">🏛️</div>
-                                <h4 style="margin: 0 0 8px 0; color: #059669; font-size: 16px;">Cromemart</h4>
-                                <p style="margin: 0; font-size: 13px; color: #666;">Event Participation Certificate</p>
-                            </div>
-                        </div>
-                        <input type="hidden" name="template_type" id="template_type" value="ofastshop" required>
-                    </div>
-
-                    <!-- OFASTSHOP FIELDS (Course) -->
-                    <div class="ofst-course-fields">
-                        <div class="ofst-form-group">
-                            <label for="product_id">Course Completed <span class="required">*</span></label>
+                            <input type="hidden" name="product_id" value="">
+                        <?php else: ?>
                             <select id="product_id" name="product_id" required>
                                 <option value="">-- Select Course --</option>
-                                <?php foreach ($products as $product): ?>
-                                    <option value="<?php echo esc_attr($product['id']); ?>">
-                                        <?php echo esc_html($product['name']); ?>
-                                        (Purchased: <?php echo esc_html(date('M d, Y', strtotime($product['purchased_date']))); ?>)
-                                    </option>
+                                <?php foreach ($all_products as $product): ?>
+                                    <?php if ($product['is_eligible']): ?>
+                                        <option value="<?php echo esc_attr($product['id']); ?>">
+                                            <?php echo esc_html($product['name']); ?>
+                                            (Purchased: <?php echo esc_html(date('M d, Y', strtotime($product['purchased_date']))); ?>)
+                                        </option>
+                                    <?php endif; ?>
                                 <?php endforeach; ?>
                             </select>
-                        </div>
-
-                        <div class="ofst-form-group">
-                            <label for="project_link">Project Link (Optional)</label>
-                            <input type="url" id="project_link" name="project_link" placeholder="https://your-project-url.com">
-                            <small>If you completed a project as part of this course, you can share the link here.</small>
-                        </div>
-                    </div><!-- End Ofastshop Fields -->
-
-                    <!-- CROMEMART FIELDS (Events) - Hidden by Default -->
-                    <?php
-                    global $wpdb;
-                    $institutions = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}ofst_cert_institutions WHERE is_active = 1 ORDER BY institution_name ASC");
-                    ?>
-                    <div class="ofst-event-fields" style="display: none;">
-                        <div class="ofst-form-group">
-                            <label for="institution_id">Institution <span class="required">*</span></label>
-                            <select id="institution_id" name="institution_id">
-                                <option value="">-- Select Institution --</option>
-                                <?php foreach ($institutions as $inst): ?>
-                                    <option value="<?php echo esc_attr($inst->id); ?>">
-                                        <?php echo esc_html($inst->institution_name); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="ofst-form-group">
-                            <label for="event_date_id">Event Date <span class="required">*</span></label>
-                            <select id="event_date_id" name="event_date_id">
-                                <option value="">Select institution first</option>
-                            </select>
-                        </div>
-                    </div><!-- End Cromemart Fields -->
-
-                    <script>
-                        jQuery(document).ready(function($) {
-                            // Card click handler - Modern interaction
-                            $('.ofst-template-card').on('click', function() {
-                                const template = $(this).data('template');
-
-                                // Update all cards to inactive state
-                                $('.ofst-template-card').removeClass('active').each(function() {
-                                    $(this).css({
-                                        'border-color': '#ddd',
-                                        'background': 'linear-gradient(135deg, #f9fafb 0%, #ffffff 100%)'
-                                    }).find('> div').first().css({
-                                        'border-color': '#ddd',
-                                        'background': 'white'
-                                    }).find('span').hide();
-                                });
-
-                                // Activate clicked card with brand color
-                                $(this).addClass('active');
-                                if (template === 'ofastshop') {
-                                    $(this).css({
-                                        'border-color': '#070244',
-                                        'background': 'linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%)'
-                                    }).find('> div').first().css({
-                                        'border-color': '#070244',
-                                        'background': '#070244'
-                                    }).find('span').show();
-                                } else {
-                                    $(this).css({
-                                        'border-color': '#059669',
-                                        'background': 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)'
-                                    }).find('> div').first().css({
-                                        'border-color': '#059669',
-                                        'background': '#059669'
-                                    }).find('span').show();
-                                }
-
-                                // Update hidden field
-                                $('#template_type').val(template);
-
-                                // Toggle fields with smooth animation
-                                if (template === 'ofastshop') {
-                                    $('.ofst-event-fields').slideUp(300);
-                                    $('.ofst-course-fields').slideDown(300);
-                                    $('#product_id').attr('required', true);
-                                    $('#institution_id, #event_date_id').attr('required', false);
-                                } else {
-                                    $('.ofst-course-fields').slideUp(300);
-                                    $('.ofst-event-fields').slideDown(300);
-                                    $('#institution_id, #event_date_id').attr('required', true);
-                                    $('#product_id').attr('required', false);
-                                }
+                            <?php
+                            // Show warning for ineligible products
+                            $ineligible_products = array_filter($all_products, function ($p) {
+                                return !$p['is_eligible'];
                             });
+                            if (!empty($ineligible_products)):
+                            ?>
+                                <p style="color: #d63638; font-style: italic; font-size: 12px; margin: 8px 0 0 0;">
+                                    <?php foreach ($ineligible_products as $prod): ?>
+                                        "<?php echo esc_html($prod['name']); ?>" - wait <?php echo esc_html($prod['days_remaining']); ?> more day(s)<br>
+                                    <?php endforeach; ?>
+                                </p>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
 
-                            // Hover effect for cards
-                            $('.ofst-template-card').on('mouseenter', function() {
-                                if (!$(this).hasClass('active')) {
-                                    $(this).css({
-                                        'transform': 'translateY(-4px)',
-                                        'box-shadow': '0 8px 16px rgba(0,0,0,0.1)'
-                                    });
-                                }
-                            }).on('mouseleave', function() {
+                    <div class="ofst-form-group">
+                        <label for="project_link">Project Link (Optional)</label>
+                        <input type="url" id="project_link" name="project_link" placeholder="https://your-project-url.com">
+                        <small>If you completed a project as part of this course, you can share the link here.</small>
+                    </div>
+                </div><!-- End Ofastshop Fields -->
+
+                <!-- CROMEMART FIELDS (Events) - Hidden by Default -->
+                <?php
+                global $wpdb;
+                $institutions = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}ofst_cert_institutions WHERE is_active = 1 ORDER BY institution_name ASC");
+                ?>
+                <div class="ofst-event-fields" style="display: none;">
+                    <div class="ofst-form-group">
+                        <label for="institution_id">Institution <span class="required">*</span></label>
+                        <select id="institution_id" name="institution_id">
+                            <option value="">-- Select Institution --</option>
+                            <?php foreach ($institutions as $inst): ?>
+                                <option value="<?php echo esc_attr($inst->id); ?>">
+                                    <?php echo esc_html($inst->institution_name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="ofst-form-group">
+                        <label for="event_date_id">Event Date <span class="required">*</span></label>
+                        <select id="event_date_id" name="event_date_id">
+                            <option value="">Select institution first</option>
+                        </select>
+                    </div>
+                </div><!-- End Cromemart Fields -->
+
+                <script>
+                    jQuery(document).ready(function($) {
+                        // Card click handler - Modern interaction
+                        $('.ofst-template-card').on('click', function() {
+                            const template = $(this).data('template');
+
+                            // Update all cards to inactive state
+                            $('.ofst-template-card').removeClass('active').each(function() {
                                 $(this).css({
-                                    'transform': 'translateY(0)',
-                                    'box-shadow': 'none'
-                                });
+                                    'border-color': '#ddd',
+                                    'background': 'linear-gradient(135deg, #f9fafb 0%, #ffffff 100%)'
+                                }).find('> div').first().css({
+                                    'border-color': '#ddd',
+                                    'background': 'white'
+                                }).find('span').hide();
                             });
 
-                            // AJAX: Load events when institution changes
-                            $('#institution_id').on('change', function() {
-                                var institutionId = $(this).val();
-                                var $eventSelect = $('#event_date_id');
+                            // Activate clicked card with brand color
+                            $(this).addClass('active');
+                            if (template === 'ofastshop') {
+                                $(this).css({
+                                    'border-color': '#070244',
+                                    'background': 'linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%)'
+                                }).find('> div').first().css({
+                                    'border-color': '#070244',
+                                    'background': '#070244'
+                                }).find('span').show();
+                            } else {
+                                $(this).css({
+                                    'border-color': '#059669',
+                                    'background': 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)'
+                                }).find('> div').first().css({
+                                    'border-color': '#059669',
+                                    'background': '#059669'
+                                }).find('span').show();
+                            }
 
-                                if (!institutionId) {
-                                    $eventSelect.html('<option value="">Select institution first</option>');
-                                    return;
-                                }
+                            // Update hidden field
+                            $('#template_type').val(template);
 
-                                $eventSelect.html('<option value="">Loading...</option>');
+                            // Toggle fields with smooth animation
+                            if (template === 'ofastshop') {
+                                $('.ofst-event-fields').slideUp(300);
+                                $('.ofst-course-fields').slideDown(300);
+                                $('#product_id').attr('required', true);
+                                $('#institution_id, #event_date_id').attr('required', false);
+                            } else {
+                                $('.ofst-course-fields').slideUp(300);
+                                $('.ofst-event-fields').slideDown(300);
+                                $('#institution_id, #event_date_id').attr('required', true);
+                                $('#product_id').attr('required', false);
+                            }
+                        });
 
-                                $.ajax({
-                                    url: ofst_cert_ajax.ajax_url,
-                                    type: 'POST',
-                                    data: {
-                                        action: 'ofst_get_event_dates',
-                                        institution_id: institutionId,
-                                        nonce: ofst_cert_ajax.nonce
-                                    },
-                                    success: function(response) {
-                                        if (response.success && response.data.events.length > 0) {
-                                            var options = '<option value="">-- Select Event --</option>';
-                                            response.data.events.forEach(function(event) {
-                                                options += '<option value="' + event.id + '">' + event.display_text + '</option>';
-                                            });
-                                            $eventSelect.html(options);
-                                        } else {
-                                            $eventSelect.html('<option value="">No events found</option>');
-                                        }
-                                    },
-                                    error: function() {
-                                        $eventSelect.html('<option value="">Error loading events</option>');
-                                    }
+                        // Hover effect for cards
+                        $('.ofst-template-card').on('mouseenter', function() {
+                            if (!$(this).hasClass('active')) {
+                                $(this).css({
+                                    'transform': 'translateY(-4px)',
+                                    'box-shadow': '0 8px 16px rgba(0,0,0,0.1)'
                                 });
+                            }
+                        }).on('mouseleave', function() {
+                            $(this).css({
+                                'transform': 'translateY(0)',
+                                'box-shadow': 'none'
                             });
                         });
-                    </script>
 
-                    <div class="ofst-form-group ofst-checkbox">
-                        <label>
-                            <input type="checkbox" name="declaration" required>
-                            <span>I confirm that all information provided is accurate and I meet the requirements for this certificate. <span class="required">*</span></span>
-                        </label>
+                        // AJAX: Load events when institution changes
+                        $('#institution_id').on('change', function() {
+                            var institutionId = $(this).val();
+                            var $eventSelect = $('#event_date_id');
+
+                            if (!institutionId) {
+                                $eventSelect.html('<option value="">Select institution first</option>');
+                                return;
+                            }
+
+                            $eventSelect.html('<option value="">Loading...</option>');
+
+                            $.ajax({
+                                url: ofst_cert_ajax.ajax_url,
+                                type: 'POST',
+                                data: {
+                                    action: 'ofst_get_event_dates',
+                                    institution_id: institutionId,
+                                    nonce: ofst_cert_ajax.nonce
+                                },
+                                success: function(response) {
+                                    if (response.success && response.data.events.length > 0) {
+                                        var options = '<option value="">-- Select Event --</option>';
+                                        response.data.events.forEach(function(event) {
+                                            options += '<option value="' + event.id + '">' + event.display_text + '</option>';
+                                        });
+                                        $eventSelect.html(options);
+                                    } else {
+                                        $eventSelect.html('<option value="">No events found</option>');
+                                    }
+                                },
+                                error: function() {
+                                    $eventSelect.html('<option value="">Error loading events</option>');
+                                }
+                            });
+                        });
+                    });
+                </script>
+
+                <div class="ofst-form-group ofst-checkbox">
+                    <label>
+                        <input type="checkbox" name="declaration" required>
+                        <span>I confirm that all information provided is accurate and I meet the requirements for this certificate. <span class="required">*</span></span>
+                    </label>
+                </div>
+
+                <?php if (!empty($turnstile_site_key)): ?>
+                    <div class="ofst-form-group">
+                        <div class="cf-turnstile" data-sitekey="<?php echo esc_attr($turnstile_site_key); ?>"></div>
                     </div>
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                <?php endif; ?>
 
-                    <?php if (!empty($turnstile_site_key)): ?>
-                        <div class="ofst-form-group">
-                            <div class="cf-turnstile" data-sitekey="<?php echo esc_attr($turnstile_site_key); ?>"></div>
-                        </div>
-                        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-                    <?php endif; ?>
+                <div class="ofst-form-actions">
+                    <button type="submit" name="ofst_submit_student_request" class="ofst-btn ofst-btn-primary">
+                        <span class="btn-text">Request Certificate</span>
+                        <span class="btn-loader" style="display:none;">Processing...</span>
+                    </button>
+                </div>
+            </form>
 
-                    <div class="ofst-form-actions">
-                        <button type="submit" name="ofst_submit_student_request" class="ofst-btn ofst-btn-primary">
-                            <span class="btn-text">Request Certificate</span>
-                            <span class="btn-loader" style="display:none;">Processing...</span>
-                        </button>
-                    </div>
-                </form>
-
-            <?php endif; ?>
         </div>
     </div>
+
+    <!-- Form validation script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('ofst-student-cert-form');
+            const templateInput = document.getElementById('template_type');
+            const productSelect = document.getElementById('product_id');
+            const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+            function validateForm() {
+                if (!templateInput || !submitBtn) return;
+
+                const templateType = templateInput.value;
+
+                if (templateType === 'ofastshop') {
+                    // For Ofastshop, check if product is selected
+                    if (!productSelect || !productSelect.value) {
+                        submitBtn.disabled = true;
+                        submitBtn.style.opacity = '0.5';
+                        submitBtn.style.cursor = 'not-allowed';
+                        submitBtn.title = 'Please select a course first';
+                    } else {
+                        submitBtn.disabled = false;
+                        submitBtn.style.opacity = '1';
+                        submitBtn.style.cursor = 'pointer';
+                        submitBtn.title = '';
+                    }
+                } else {
+                    // For Cromemart, always enable
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                    submitBtn.title = '';
+                }
+            }
+
+            // Validate on load
+            validateForm();
+
+            // Validate on template change
+            if (templateInput) {
+                document.querySelectorAll('.ofst-template-card').forEach(function(card) {
+                    card.addEventListener('click', function() {
+                        setTimeout(validateForm, 100);
+                    });
+                });
+            }
+
+            // Validate on product change
+            if (productSelect) {
+                productSelect.addEventListener('change', validateForm);
+            }
+
+            // Prevent form submission if invalid
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    if (templateInput.value === 'ofastshop' && (!productSelect || !productSelect.value)) {
+                        e.preventDefault();
+                        alert('Please select a course to request a certificate for.');
+                        return false;
+                    }
+                });
+            }
+        });
+    </script>
 
 <?php
     return ob_get_clean();
@@ -360,51 +438,71 @@ function ofst_cert_process_student_request()
     }
 
 
-    // Verify user purchased this product
-    $has_purchased = false;
-    $purchase_date = null;
-    $orders = wc_get_orders(array(
-        'customer_id' => $user_id,
-        'status' => array('wc-completed', 'wc-processing'),
-        'limit' => -1
-    ));
+    // Variables for database insert
+    $product_name = null;
+    $vendor_id = null;
+    $instructor_name = null;
 
-    foreach ($orders as $order) {
-        foreach ($order->get_items() as $item) {
-            if ($item->get_product_id() == $product_id) {
-                $has_purchased = true;
-                $purchase_date = $order->get_date_created()->date('Y-m-d H:i:s');
-                break 2;
+    // OFASTSHOP: Verify user purchased this product
+    if ($template_type === 'ofastshop') {
+        // Require product_id for Ofastshop
+        if (empty($product_id)) {
+            wp_die('Please select a course to request a certificate for.');
+        }
+
+        if (!function_exists('wc_get_orders')) {
+            wp_die('WooCommerce is required for course certificates.');
+        }
+
+        $has_purchased = false;
+        $purchase_date = null;
+        $orders = wc_get_orders(array(
+            'customer_id' => $user_id,
+            'status' => array('wc-completed', 'wc-processing'),
+            'limit' => -1
+        ));
+
+        foreach ($orders as $order) {
+            foreach ($order->get_items() as $item) {
+                if ($item->get_product_id() == $product_id) {
+                    $has_purchased = true;
+                    $purchase_date = $order->get_date_created()->date('Y-m-d H:i:s');
+                    break 2;
+                }
+            }
+        }
+
+        if (!$has_purchased) {
+            wp_die('You have not purchased this course');
+        }
+
+        // Check minimum days requirement
+        $min_days = (int) ofst_cert_get_setting('min_days_after_purchase', 3);
+        $min_date = date('Y-m-d H:i:s', strtotime("-$min_days days"));
+
+        if ($purchase_date > $min_date) {
+            wp_die("You can request a certificate $min_days days after purchase. Please try again later.");
+        }
+
+        // Get product details
+        $product = wc_get_product($product_id);
+        $product_name = $product ? $product->get_name() : 'Unknown Product';
+
+        // Get vendor/instructor info
+        if (function_exists('dokan_get_vendor_by_product')) {
+            $vendor = dokan_get_vendor_by_product($product_id);
+            if ($vendor) {
+                $vendor_id = $vendor->get_id();
+                $vendor_user = get_userdata($vendor_id);
+                $instructor_name = $vendor_user->display_name;
             }
         }
     }
 
-    if (!$has_purchased) {
-        wp_die('You have not purchased this course');
-    }
-
-    // Check minimum days requirement
-    $min_days = (int) ofst_cert_get_setting('min_days_after_purchase', 3);
-    $min_date = date('Y-m-d H:i:s', strtotime("-$min_days days"));
-
-    if ($purchase_date > $min_date) {
-        wp_die("You can request a certificate $min_days days after purchase. Please try again later.");
-    }
-
-    // Get product details
-    $product = wc_get_product($product_id);
-    $product_name = $product ? $product->get_name() : 'Unknown Product';
-
-    // Get vendor/instructor info
-    $vendor_id = null;
-    $instructor_name = null;
-
-    if (function_exists('dokan_get_vendor_by_product')) {
-        $vendor = dokan_get_vendor_by_product($product_id);
-        if ($vendor) {
-            $vendor_id = $vendor->get_id();
-            $vendor_user = get_userdata($vendor_id);
-            $instructor_name = $vendor_user->display_name;
+    // CROMEMART: Validate institution and event
+    if ($template_type === 'cromemart') {
+        if (empty($institution_id) || empty($event_date_id)) {
+            wp_die('Please select an institution and event date.');
         }
     }
 
@@ -442,10 +540,7 @@ function ofst_cert_process_student_request()
         // Send notification to admin
         ofst_cert_send_admin_notification($cert_id, 'student', $first_name . ' ' . $last_name, $product_name);
 
-        // Send notification to vendor (if exists)
-        if ($vendor_id) {
-            ofst_cert_send_vendor_notification($vendor_id, $first_name . ' ' . $last_name, $product_name, $cert_id);
-        }
+        // Note: Vendor is notified only when certificate is issued, not on request
 
         // Redirect with success message
         $redirect_url = add_query_arg('cert_success', 'student_request', wp_get_referer());

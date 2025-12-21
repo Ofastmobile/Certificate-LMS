@@ -304,6 +304,42 @@ function ofst_cert_generate_id()
     return $cert_id;
 }
 
+/**
+ * Get instructor name from product or vendor
+ */
+function ofst_cert_get_instructor_name($product_id, $vendor_id = null)
+{
+    // Try to get from vendor first
+    if ($vendor_id) {
+        $vendor_user = get_userdata($vendor_id);
+        if ($vendor_user) {
+            return $vendor_user->display_name;
+        }
+    }
+
+    // Try to get from product author (Dokan)
+    if ($product_id && function_exists('dokan_get_vendor_by_product')) {
+        $vendor = dokan_get_vendor_by_product($product_id);
+        if ($vendor) {
+            return $vendor->get_shop_name() ?: $vendor->get_name();
+        }
+    }
+
+    // Try to get from product author
+    if ($product_id) {
+        $product = wc_get_product($product_id);
+        if ($product) {
+            $author_id = get_post_field('post_author', $product_id);
+            $author = get_userdata($author_id);
+            if ($author) {
+                return $author->display_name;
+            }
+        }
+    }
+
+    return 'Instructor';
+}
+
 // Check if certificate already exists for user + product
 function ofst_cert_check_duplicate($user_id, $product_id)
 {
@@ -364,6 +400,66 @@ function ofst_cert_get_user_products($user_id, $min_days = null)
                             'purchased_date' => $order_date
                         );
                     }
+                }
+            }
+        }
+    }
+
+    return $products;
+}
+
+/**
+ * Get ALL user's purchased products with eligibility status
+ * Returns products regardless of min_days, but marks ineligible ones
+ */
+function ofst_cert_get_all_user_products($user_id)
+{
+    if (!function_exists('wc_get_orders')) {
+        return array();
+    }
+
+    $min_days = (int) ofst_cert_get_setting('min_days_after_purchase', 3);
+    $min_date = date('Y-m-d', strtotime("-$min_days days"));
+
+    $orders = wc_get_orders(array(
+        'customer_id' => $user_id,
+        'status' => array('wc-completed', 'wc-processing'),
+        'limit' => -1
+    ));
+
+    $products = array();
+
+    foreach ($orders as $order) {
+        $order_date = $order->get_date_created()->date('Y-m-d');
+
+        foreach ($order->get_items() as $item) {
+            $product_id = $item->get_product_id();
+            $product = wc_get_product($product_id);
+
+            if ($product && !isset($products[$product_id])) {
+                // Check if already has certificate
+                $has_cert = ofst_cert_check_duplicate($user_id, $product_id);
+
+                if (!$has_cert) {
+                    // Determine eligibility
+                    $is_eligible = ($order_date <= $min_date);
+                    $days_remaining = 0;
+
+                    if (!$is_eligible) {
+                        // Calculate days remaining
+                        $purchase_timestamp = strtotime($order_date);
+                        $eligible_timestamp = $purchase_timestamp + ($min_days * 86400);
+                        $days_remaining = ceil(($eligible_timestamp - time()) / 86400);
+                        if ($days_remaining < 0) $days_remaining = 0;
+                    }
+
+                    $products[$product_id] = array(
+                        'id' => $product_id,
+                        'name' => $product->get_name(),
+                        'purchased_date' => $order_date,
+                        'is_eligible' => $is_eligible,
+                        'days_remaining' => $days_remaining
+                    );
                 }
             }
         }

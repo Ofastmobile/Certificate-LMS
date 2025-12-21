@@ -245,3 +245,50 @@ function ofst_cert_send_rejection_email($request, $reason)
 
     return wp_mail($request->email, $subject, $message, $headers);
 }
+
+/**
+ * Notify vendor that certificate was issued to their student
+ */
+function ofst_cert_notify_vendor_certificate_issued($request)
+{
+    $vendor = get_userdata($request->vendor_id);
+    if (!$vendor) return false;
+
+    $student_name = $request->first_name . ' ' . $request->last_name;
+    $subject = 'Certificate Issued to Your Student - ' . $request->certificate_id;
+
+    $message = "
+    <html>
+    <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+        <div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd;'>
+            <h2 style='color: #28a745;'>Certificate Issued!</h2>
+            
+            <p>Dear {$vendor->display_name},</p>
+            
+            <p>Great news! A certificate has been issued to a student for your course:</p>
+            
+            <div style='background: #d4edda; padding: 15px; margin: 20px 0; border-left: 4px solid #28a745;'>
+                <strong>Student:</strong> {$student_name}<br>
+                <strong>Course:</strong> {$request->product_name}<br>
+                <strong>Certificate ID:</strong> {$request->certificate_id}<br>
+                <strong>Issued Date:</strong> " . date('F d, Y') . "
+            </div>
+            
+            <p>The student has received their certificate via email.</p>
+            
+            <p>Thank you for being part of our platform!</p>
+            
+            <p>Best regards,<br>
+            " . ofst_cert_get_setting('company_name') . "</p>
+        </div>
+    </body>
+    </html>
+    ";
+
+    $headers = array(
+        'Content-Type: text/html; charset=UTF-8',
+        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+    );
+
+    return wp_mail($vendor->user_email, $subject, $message, $headers);
+}

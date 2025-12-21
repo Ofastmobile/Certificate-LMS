@@ -170,31 +170,12 @@ function ofst_cert_admin_dashboard()
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
 
-    // Get filter
-    $filter = isset($_GET['filter']) ? sanitize_text_field($_GET['filter']) : 'all';
-    $where = "status = 'pending'";
-
-    if ($filter === 'student') {
-        $where .= " AND request_type = 'student'";
-    } elseif ($filter === 'vendor') {
-        $where .= " AND request_type = 'vendor'";
-    }
-
-    $requests = $wpdb->get_results("SELECT * FROM $table WHERE $where ORDER BY requested_date DESC");
+    // Get all pending requests (students only now)
+    $requests = $wpdb->get_results("SELECT * FROM $table WHERE status = 'pending' ORDER BY requested_date DESC");
 
 ?>
     <div class="wrap">
         <h1>Certificate Management - Pending Requests</h1>
-
-        <div class="tablenav top">
-            <div class="alignleft actions">
-                <select name="filter_type" id="filter_type" onchange="window.location.href='?page=ofst-certificates&filter='+this.value">
-                    <option value="all" <?php selected($filter, 'all'); ?>>All Requests</option>
-                    <option value="student" <?php selected($filter, 'student'); ?>>Student Requests</option>
-                    <option value="vendor" <?php selected($filter, 'vendor'); ?>>Vendor Requests</option>
-                </select>
-            </div>
-        </div>
 
         <?php if (empty($requests)): ?>
             <div class="notice notice-info">
@@ -222,8 +203,8 @@ function ofst_cert_admin_dashboard()
                             <th>Certificate ID</th>
                             <th>Student Name</th>
                             <th>Email</th>
-                            <th>Course</th>
-                            <th>Type</th>
+                            <th>Cert Type</th>
+                            <th>Course/Event</th>
                             <th>Requested</th>
                             <th>Actions</th>
                         </tr>
@@ -235,15 +216,19 @@ function ofst_cert_admin_dashboard()
                                 <td><strong><?php echo esc_html($req->certificate_id); ?></strong></td>
                                 <td><?php echo esc_html($req->first_name . ' ' . $req->last_name); ?></td>
                                 <td><?php echo esc_html($req->email); ?></td>
-                                <td><?php echo esc_html($req->product_name); ?></td>
-                                <td><span class="cert-type-badge <?php echo $req->request_type; ?>"><?php echo ucfirst($req->request_type); ?></span></td>
+                                <td>
+                                    <span class="cert-type-badge <?php echo esc_attr($req->template_type); ?>">
+                                        <?php echo $req->template_type === 'cromemart' ? 'Cromemart' : 'Ofastshop'; ?>
+                                    </span>
+                                </td>
+                                <td><?php echo esc_html($req->product_name ?: 'Event Certificate'); ?></td>
                                 <td><?php echo date('M d, Y', strtotime($req->requested_date)); ?></td>
                                 <td>
                                     <a href="?page=ofst-certificates&action=view&cert_id=<?php echo $req->id; ?>" class="button button-small">View</a>
-                                    <a href="?page=ofst-certificates&action=approve-quick&cert_id=<?php echo $req->id; ?>&_wpnonce=<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>"
-                                        class="button button-primary button-small"
-                                        onclick="return confirm('Approve this certificate request?')">Quick Approve</a>
-                                    <a href="#" onclick="rejectCertificate(<?php echo $req->id; ?>); return false;" class="button button-small">Reject</a>
+                                    <a href="#"
+                                        class="button button-small reject-btn"
+                                        data-cert-id="<?php echo $req->id; ?>"
+                                        data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>">Reject</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -345,7 +330,10 @@ function ofst_cert_admin_dashboard()
                                     onclick="return confirm('Generate certificate and send to student?')">
                                     ✅ Generate & Issue Certificate
                                 </button>
-                                <a href="#" onclick="rejectCertificate(<?php echo $cert->id; ?>); return false;" class="button button-large">Reject Request</a>
+                                <a href="#"
+                                    class="button button-large reject-btn"
+                                    data-cert-id="<?php echo $cert->id; ?>"
+                                    data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $cert->id); ?>">Reject Request</a>
                                 <a href="?page=ofst-certificates" class="button button-large">Close</a>
                             </p>
                         </form>
@@ -364,14 +352,20 @@ function ofst_cert_admin_dashboard()
             document.querySelectorAll('.cert-checkbox').forEach(cb => cb.checked = this.checked);
         });
 
-        function rejectCertificate(certId) {
-            var reason = prompt('Rejection reason (optional):');
-            if (reason !== null) {
-                window.location.href = '?page=ofst-certificates&action=reject&cert_id=' + certId +
-                    '&reason=' + encodeURIComponent(reason) +
-                    '&_wpnonce=<?php echo wp_create_nonce('ofst_cert_action_'); ?>' + certId;
-            }
-        }
+        // Handle reject buttons with proper nonces
+        document.querySelectorAll('.reject-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var certId = this.getAttribute('data-cert-id');
+                var nonce = this.getAttribute('data-nonce');
+                var reason = prompt('Rejection reason (optional):');
+                if (reason !== null) {
+                    window.location.href = '?page=ofst-certificates&action=reject&cert_id=' + certId +
+                        '&reason=' + encodeURIComponent(reason) +
+                        '&_wpnonce=' + nonce;
+                }
+            });
+        });
     </script>
 
     <style>
@@ -383,12 +377,12 @@ function ofst_cert_admin_dashboard()
             text-transform: uppercase;
         }
 
-        .cert-type-badge.student {
+        .cert-type-badge.ofastshop {
             background: #e3f2fd;
             color: #1976d2;
         }
 
-        .cert-type-badge.vendor {
+        .cert-type-badge.cromemart {
             background: #fff3e0;
             color: #f57c00;
         }
@@ -464,7 +458,7 @@ function ofst_cert_approve_request($request_id, $completion_date = null)
     $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
 
     // Generate certificate automatically
-    $gen_result = ofst_cert_generate_certificate($request, $completion_date);
+    $gen_result = ofst_cert_generate_certificate($request_id);
 
     if (!$gen_result['success']) {
         // Log generation failure
@@ -495,6 +489,11 @@ function ofst_cert_approve_request($request_id, $completion_date = null)
         // Log email failure but don't fail the whole process
         ofst_cert_log_email_failure($request_id, 'Email sending failed');
         return ['success' => true, 'error' => 'Certificate generated but email failed. You can resend from Failed Certificates page.'];
+    }
+
+    // Notify vendor that certificate was issued (if vendor exists)
+    if (!empty($request->vendor_id)) {
+        ofst_cert_notify_vendor_certificate_issued($request);
     }
 
     return ['success' => true, 'error' => ''];
@@ -804,15 +803,9 @@ function ofst_cert_settings_page()
         check_admin_referer('ofst_settings_nonce');
 
         $settings = array(
-            'cert_prefix',
-            'min_days_after_purchase',
-            'company_name',
             'support_email',
             'from_email',
             'from_name',
-            'logo_url',
-            'seal_url',
-            'signature_url',
             'turnstile_site_key',
             'turnstile_secret_key'
         );
@@ -837,73 +830,27 @@ function ofst_cert_settings_page()
         <form method="post">
             <?php wp_nonce_field('ofst_settings_nonce'); ?>
 
-            <h2>General Settings</h2>
-            <table class="form-table">
-                <tr>
-                    <th>Certificate ID Prefix</th>
-                    <td>
-                        <input type="text" name="cert_prefix" value="<?php echo esc_attr(ofst_cert_get_setting('cert_prefix', 'OFSHDG')); ?>" class="regular-text">
-                        <p class="description">Prefix for certificate IDs (e.g., OFSHDG2024001)</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th>Minimum Days After Purchase</th>
-                    <td>
-                        <input type="number" name="min_days_after_purchase" value="<?php echo esc_attr(ofst_cert_get_setting('min_days_after_purchase', '3')); ?>" min="0" max="365">
-                        <p class="description">Students can request certificates this many days after purchase</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th>Company Name</th>
-                    <td>
-                        <input type="text" name="company_name" value="<?php echo esc_attr(ofst_cert_get_setting('company_name')); ?>" class="regular-text">
-                    </td>
-                </tr>
-                <tr>
-                    <th>Support Email</th>
-                    <td>
-                        <input type="email" name="support_email" value="<?php echo esc_attr(ofst_cert_get_setting('support_email')); ?>" class="regular-text">
-                    </td>
-                </tr>
-            </table>
-
             <h2>Email Settings</h2>
             <table class="form-table">
                 <tr>
                     <th>From Email</th>
                     <td>
                         <input type="email" name="from_email" value="<?php echo esc_attr(ofst_cert_get_setting('from_email')); ?>" class="regular-text">
+                        <p class="description">Email address used to send certificate emails</p>
                     </td>
                 </tr>
                 <tr>
                     <th>From Name</th>
                     <td>
                         <input type="text" name="from_name" value="<?php echo esc_attr(ofst_cert_get_setting('from_name')); ?>" class="regular-text">
-                    </td>
-                </tr>
-            </table>
-
-            <h2>Certificate Design</h2>
-            <table class="form-table">
-                <tr>
-                    <th>Logo URL</th>
-                    <td>
-                        <input type="url" name="logo_url" value="<?php echo esc_attr(ofst_cert_get_setting('logo_url')); ?>" class="large-text">
-                        <p class="description">URL to your company logo (recommended: R2 bucket)</p>
+                        <p class="description">Name shown in certificate emails</p>
                     </td>
                 </tr>
                 <tr>
-                    <th>Seal/Badge URL</th>
+                    <th>Support Email</th>
                     <td>
-                        <input type="url" name="seal_url" value="<?php echo esc_attr(ofst_cert_get_setting('seal_url')); ?>" class="large-text">
-                        <p class="description">URL to certificate seal/badge image</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th>Signature URL</th>
-                    <td>
-                        <input type="url" name="signature_url" value="<?php echo esc_attr(ofst_cert_get_setting('signature_url')); ?>" class="large-text">
-                        <p class="description">URL to signature image</p>
+                        <input type="email" name="support_email" value="<?php echo esc_attr(ofst_cert_get_setting('support_email')); ?>" class="regular-text">
+                        <p class="description">Email for student support inquiries</p>
                     </td>
                 </tr>
             </table>
