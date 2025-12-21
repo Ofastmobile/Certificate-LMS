@@ -138,19 +138,20 @@ function ofst_cert_load_template($template_type, $request)
  */
 function ofst_cert_generate_pdf($html, $certificate_id, $template_type)
 {
-    $dompdf_path = OFST_CERT_PLUGIN_DIR . 'pdf/dompdf/';
+    $autoload_path = OFST_CERT_PLUGIN_DIR . 'pdf/autoload.php';
 
-    if (!file_exists($dompdf_path . 'src/Dompdf.php')) {
-        return ['success' => false, 'error' => 'Dompdf not found at: ' . $dompdf_path];
+    if (!file_exists($autoload_path)) {
+        return ['success' => false, 'error' => 'PDF autoloader not found at: ' . $autoload_path];
     }
 
-    require_once $dompdf_path . 'src/Autoloader.php';
-    \Dompdf\Autoloader::register();
+    // Load unified autoloader (includes stubs + Dompdf)
+    require_once $autoload_path;
 
     $options = new \Dompdf\Options();
     $options->set('isRemoteEnabled', true);  // Allow loading images from URLs (R2 bucket)
-    $options->set('defaultFont', 'Arial');
+    $options->set('defaultFont', 'Helvetica');
     $options->set('isHtml5ParserEnabled', true);
+    $options->set('isFontSubsettingEnabled', false);  // Disable font subsetting to use built-in fonts
 
     $dompdf = new \Dompdf\Dompdf($options);
     $dompdf->loadHtml($html);
