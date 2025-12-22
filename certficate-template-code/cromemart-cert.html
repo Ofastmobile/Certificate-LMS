@@ -70,7 +70,8 @@
     }
 
     .header-cell {
-      padding-top: 15px;
+      vertical-align: top;
+      padding-top: 20px;
     }
 
     .logo {
@@ -100,7 +101,7 @@
       letter-spacing: 2px;
       color: #555;
       text-transform: uppercase;
-      margin: 15px 0 5px 0;
+      margin: 10px 0 5px 0;
     }
 
     .divider {
@@ -111,10 +112,10 @@
     }
 
     .recipient-name {
-      font-size: 40px;
+      font-size: 38px;
       font-style: italic;
       color: #1a1a2e;
-      margin: 8px 0;
+      margin: 5px 0;
     }
 
     .description {
@@ -124,7 +125,7 @@
       text-align: center;
       max-width: 450px;
       line-height: 1.6;
-      margin: 8px auto;
+      margin: 5px auto;
     }
 
     .signature-table {
@@ -187,12 +188,6 @@
       margin-bottom: 5px;
     }
 
-    .qr-section {
-      position: absolute;
-      right: 50px;
-      bottom: 25px;
-    }
-
     .qr-img {
       width: 50px;
       height: 50px;
@@ -219,6 +214,43 @@
               src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163142/Cromemart-Logo-2.webp"
               alt="Logo" class="logo">
             <h1 class="title">Certificate</h1>
+            <p class="subtitle">of Participation</p>
+          </td>
+          <td></td>
+        </tr>
+
+        <!-- Presented to section -->
+        <tr>
+          <td></td>
+          <td colspan="3" style="vertical-align: top;">
+            <p class="presented-text">This certificate is proudly presented to</p>
+            <div class="divider"></div>
+            <h2 class="recipient-name">{{STUDENT_NAME}}</h2>
+            <div class="divider"></div>
+            <p class="description">
+              has actively participated in the {{EVENT_NAME}} themed "{{EVENT_THEME}}" held on {{EVENT_DATE}}, at the
+              {{INSTITUTION_NAME}}.
+            </p>
+          </td>
+          <td></td>
+        </tr>
+
+        <!-- Spacer Row to push signatures to bottom -->
+        <tr>
+          <td colspan="5" style="height: 100%;"></td>
+        </tr>
+
+        <!-- Signature Section -->
+        <tr>
+          <td></td>
+          <td colspan="3" style="vertical-align: bottom; padding-bottom: 15px;">
+            <table class="signature-table">
+              <tr>
+                <td class="signature-cell">
+                  <img
+                    src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163117/signature.webp"
+                    alt="Signature" class="signature-img">
+                  <div class="signature-line"></div>
                   <span class="signature-label">Signature</span>
                 </td>
                 <td class="seal-cell">
@@ -238,13 +270,13 @@
           <td></td>
         </tr>
 
-        <!-- Bottom row with corners -->
+        <!-- Bottom row with corners and QR -->
         <tr>
           <td class="corner corner-bl"></td>
-          <td colspan="3" style="position: relative;">
+          <td colspan="3" style="text-align: right; vertical-align: bottom; padding-right: 20px; padding-bottom: 10px;">
             <img
               src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18172619/scan-qr-code.webp"
-              alt="QR" class="qr-img" style="position: absolute; right: 20px; bottom: 5px;">
+              alt="QR" class="qr-img">
           </td>
           <td class="corner corner-br"></td>
         </tr>
