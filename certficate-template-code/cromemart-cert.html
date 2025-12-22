@@ -71,61 +71,66 @@
 
     .header-cell {
       vertical-align: top;
-      padding-top: 20px;
+      padding-top: 8px;
     }
 
     .logo {
-      width: 200px;
+      width: 180px;
       height: auto;
     }
 
     .title {
-      font-size: 36px;
+      font-size: 32px;
       font-weight: bold;
       letter-spacing: 8px;
       color: #1a1a2e;
-      margin: 5px 0;
+      margin: 8px 0;
       text-transform: uppercase;
     }
 
     .subtitle {
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 4px;
       color: #1a1a2e;
       text-transform: uppercase;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .presented-text {
-      font-size: 11px;
+      font-size: 10px;
       letter-spacing: 2px;
       color: #555;
       text-transform: uppercase;
-      margin: 10px 0 5px 0;
+      margin: 12px 0 6px 0;
     }
 
     .divider {
-      width: 180px;
+      width: 160px;
       height: 2px;
       background-color: #00231c;
-      margin: 8px auto;
+      margin: 06px auto;
     }
 
     .recipient-name {
-      font-size: 38px;
+      font-size: 34px;
       font-style: italic;
       color: #1a1a2e;
-      margin: 5px 0;
+      margin: 12px 0 4px 0;
     }
 
     .description {
-      font-size: 10px;
+      font-size: 11px;
       font-style: italic;
       color: #666;
       text-align: center;
-      max-width: 450px;
+      max-width: 520px;
       line-height: 1.6;
-      margin: 5px auto;
+      margin: 8px auto;
+    }
+
+    .description strong {
+      font-weight: bold;
+      color: #1a1a2e;
     }
 
     .signature-table {
@@ -149,19 +154,19 @@
     }
 
     .signature-img {
-      width: 100px;
-      height: 40px;
+      width: 90px;
+      height: 35px;
     }
 
     .signature-line {
-      width: 130px;
+      width: 120px;
       height: 1px;
       background-color: #1a1a2e;
-      margin: 0 auto 5px auto;
+      margin: 0 auto 4px auto;
     }
 
     .signature-label {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: bold;
       letter-spacing: 1px;
       color: #1a1a2e;
@@ -169,28 +174,28 @@
     }
 
     .seal-img {
-      width: 70px;
-      height: 70px;
+      width: 60px;
+      height: 60px;
     }
 
     .cert-id {
-      font-size: 9px;
+      font-size: 8px;
       font-weight: bold;
       letter-spacing: 1px;
       color: #1a1a2e;
       text-transform: uppercase;
-      margin-top: 5px;
+      margin-top: 4px;
     }
 
     .date-text {
-      font-size: 12px;
+      font-size: 11px;
       color: #1a1a2e;
-      margin-bottom: 5px;
+      margin-bottom: 4px;
     }
 
     .qr-img {
-      width: 50px;
-      height: 50px;
+      width: 45px;
+      height: 45px;
     }
   </style>
 </head>
@@ -228,22 +233,21 @@
             <h2 class="recipient-name">{{STUDENT_NAME}}</h2>
             <div class="divider"></div>
             <p class="description">
-              has actively participated in the {{EVENT_NAME}} themed "{{EVENT_THEME}}" held on {{EVENT_DATE}}, at the
-              {{INSTITUTION_NAME}}.
+              has actively participated in the <strong>{{EVENT_NAME}}</strong> themed "<strong>{{EVENT_THEME}}</strong>"
+              held on <strong>{{EVENT_DATE}}</strong>, at the
+              <strong>{{INSTITUTION_NAME}}</strong>. This certificate is awarded in recognition of the participant's
+              commitment to learning about Artificial Intelligence, digital skills, innovation, and emerging
+              opportunities shaping the
+              future of work and technology.
             </p>
           </td>
           <td></td>
         </tr>
 
-        <!-- Spacer Row to push signatures to bottom -->
-        <tr>
-          <td colspan="5" style="height: 100%;"></td>
-        </tr>
-
         <!-- Signature Section -->
         <tr>
           <td></td>
-          <td colspan="3" style="vertical-align: bottom; padding-bottom: 15px;">
+          <td colspan="3" style="vertical-align: bottom; padding-bottom: 12px; padding-top: 20px;">
             <table class="signature-table">
               <tr>
                 <td class="signature-cell">
@@ -273,7 +277,7 @@
         <!-- Bottom row with corners and QR -->
         <tr>
           <td class="corner corner-bl"></td>
-          <td colspan="3" style="text-align: right; vertical-align: bottom; padding-right: 20px; padding-bottom: 10px;">
+          <td colspan="3" style="text-align: right; vertical-align: bottom; padding-right: 15px; padding-bottom: 8px;">
             <img
               src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18172619/scan-qr-code.webp"
               alt="QR" class="qr-img">
