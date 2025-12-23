@@ -523,6 +523,34 @@ function ofst_cert_process_student_request()
         if (empty($institution_id) || empty($event_date_id)) {
             wp_die('Please select an institution and event date.');
         }
+
+        // Validate participant is in roster
+        $full_name = trim($first_name . ' ' . $last_name);
+        $participants_table = $wpdb->prefix . 'ofst_cert_event_participants';
+
+        $participant = $wpdb->get_row($wpdb->prepare(
+            "SELECT id FROM $participants_table 
+             WHERE event_date_id = %d 
+             AND LOWER(TRIM(full_name)) = LOWER(TRIM(%s))",
+            $event_date_id,
+            $full_name
+        ));
+
+        if (!$participant) {
+            wp_die(
+                '<h2>Unable to Verify Attendance</h2>' .
+                    '<p>Your name was not found in the participant list for this event.</p>' .
+                    '<p><strong>Please ensure:</strong></p>' .
+                    '<ul>' .
+                    '<li>You actually attended this event</li>' .
+                    '<li>Your name is spelled exactly as on the registration</li>' .
+                    '</ul>' .
+                    '<p>If you believe this is an error, please contact ' . esc_html(ofst_cert_get_setting('support_email')) . '</p>' .
+                    '<p><a href="javascript:history.back()">← Go Back</a></p>',
+                'Verification Required',
+                ['back_link' => false]
+            );
+        }
     }
 
     // Generate certificate ID

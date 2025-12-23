@@ -257,7 +257,7 @@ add_action('admin_init', 'ofst_cert_check_db_version');
 function ofst_cert_check_db_version()
 {
     $current_db_version = get_option('ofst_cert_db_version', '1.0');
-    $required_db_version = '2.3'; // Increment this when making DB changes
+    $required_db_version = '2.4'; // Increment this when making DB changes
 
     if (version_compare($current_db_version, $required_db_version, '<')) {
         // Run all migrations
@@ -337,6 +337,14 @@ function ofst_cert_run_safe_migrations()
     // Ensure product_id and product_name are nullable (for Cromemart)
     $wpdb->query("ALTER TABLE $table MODIFY product_id bigint(20) DEFAULT NULL");
     $wpdb->query("ALTER TABLE $table MODIFY product_name varchar(255) DEFAULT NULL");
+
+    // V2.4: Add email column to participants table
+    $participants_table = $prefix . 'cert_event_participants';
+    $participant_cols = $wpdb->get_results("SHOW COLUMNS FROM $participants_table LIKE 'email'");
+    if (empty($participant_cols)) {
+        $wpdb->query("ALTER TABLE $participants_table ADD COLUMN email varchar(100) DEFAULT NULL AFTER full_name");
+        error_log('OFST Certificate: Added email column to participants table');
+    }
 
     $wpdb->suppress_errors(false);
 }

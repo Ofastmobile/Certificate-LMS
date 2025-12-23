@@ -62,15 +62,6 @@ function ofst_cert_add_admin_menu()
         'ofst_cert_verification_log'
     );
 
-    add_submenu_page(
-        'ofst-certificates',
-        'Settings',
-        'Settings',
-        'manage_options',
-        'ofst-certificates-settings',
-        'ofst_cert_settings_page'
-    );
-
     // V2.0: Institution Management (for Cromemart)
     add_submenu_page(
         'ofst-certificates',
@@ -99,6 +90,16 @@ function ofst_cert_add_admin_menu()
         'manage_options',
         'ofst-participants',
         'ofst_cert_participants_page'
+    );
+
+    // Settings (moved to bottom)
+    add_submenu_page(
+        'ofst-certificates',
+        'Settings',
+        'Settings',
+        'manage_options',
+        'ofst-certificates-settings',
+        'ofst_cert_settings_page'
     );
 }
 
