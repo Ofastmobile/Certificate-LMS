@@ -90,6 +90,16 @@ function ofst_cert_add_admin_menu()
         'ofst-event-dates',
         'ofst_cert_event_dates_page'
     );
+
+    // V2.3: Event Participants Roster
+    add_submenu_page(
+        'ofst-certificates',
+        'Event Participants',
+        'Participants',
+        'manage_options',
+        'ofst-participants',
+        'ofst_cert_participants_page'
+    );
 }
 
 /**
@@ -521,6 +531,21 @@ function ofst_cert_approve_request($request_id, $completion_date = null)
 
     // Get updated request data for email
     $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
+
+    // V2.3: Auto-remove from participants roster (for Cromemart certificates)
+    if ($request->template_type === 'cromemart' && !empty($request->event_date_id)) {
+        $participants_table = $wpdb->prefix . 'ofst_cert_event_participants';
+        $full_name = trim($request->first_name . ' ' . $request->last_name);
+
+        // Find and remove matching participant (case-insensitive name match + same event)
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM $participants_table 
+             WHERE event_date_id = %d 
+             AND LOWER(TRIM(full_name)) = LOWER(%s)",
+            $request->event_date_id,
+            $full_name
+        ));
+    }
 
     // Send email to student with certificate
     $email_sent = ofst_cert_send_certificate_email($request);
@@ -1194,6 +1219,261 @@ function ofst_cert_event_dates_page()
                 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+<?php
+}
+
+// =====================================================
+// V2.3: EVENT PARTICIPANTS ROSTER PAGE
+// =====================================================
+function ofst_cert_participants_page()
+{
+    global $wpdb;
+    $participants_table = $wpdb->prefix . 'ofst_cert_event_participants';
+    $events_table = $wpdb->prefix . 'ofst_cert_event_dates';
+    $institutions_table = $wpdb->prefix . 'ofst_cert_institutions';
+
+    // Handle Add Single Participant
+    if (isset($_POST['add_participant']) && check_admin_referer('add_participant_nonce')) {
+        $event_id = absint($_POST['event_date_id']);
+        $name = sanitize_text_field($_POST['participant_name']);
+
+        if ($event_id && $name) {
+            $wpdb->insert($participants_table, [
+                'event_date_id' => $event_id,
+                'full_name' => $name,
+                'added_date' => current_time('mysql'),
+                'added_by' => get_current_user_id()
+            ]);
+            echo '<div class="notice notice-success"><p>Participant added successfully!</p></div>';
+        }
+    }
+
+    // Handle Bulk Add (text paste)
+    if (isset($_POST['bulk_add_participants']) && check_admin_referer('bulk_add_nonce')) {
+        $event_id = absint($_POST['bulk_event_id']);
+        $names_raw = sanitize_textarea_field($_POST['bulk_names']);
+
+        if ($event_id && $names_raw) {
+            $names = array_filter(array_map('trim', explode("\n", $names_raw)));
+            $added = 0;
+
+            foreach ($names as $name) {
+                if (!empty($name)) {
+                    $wpdb->insert($participants_table, [
+                        'event_date_id' => $event_id,
+                        'full_name' => $name,
+                        'added_date' => current_time('mysql'),
+                        'added_by' => get_current_user_id()
+                    ]);
+                    $added++;
+                }
+            }
+            echo '<div class="notice notice-success"><p>' . $added . ' participants added successfully!</p></div>';
+        }
+    }
+
+    // Handle CSV Upload
+    if (isset($_POST['csv_upload']) && check_admin_referer('csv_upload_nonce') && !empty($_FILES['csv_file']['tmp_name'])) {
+        $event_id = absint($_POST['csv_event_id']);
+
+        if ($event_id && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
+            $file_content = file_get_contents($_FILES['csv_file']['tmp_name']);
+            $lines = array_filter(array_map('trim', explode("\n", $file_content)));
+            $added = 0;
+
+            foreach ($lines as $line) {
+                $name = sanitize_text_field($line);
+                if (!empty($name) && $name !== 'Name' && $name !== 'Full Name') { // Skip header
+                    $wpdb->insert($participants_table, [
+                        'event_date_id' => $event_id,
+                        'full_name' => $name,
+                        'added_date' => current_time('mysql'),
+                        'added_by' => get_current_user_id()
+                    ]);
+                    $added++;
+                }
+            }
+            echo '<div class="notice notice-success"><p>' . $added . ' participants imported from CSV!</p></div>';
+        }
+    }
+
+    // Handle Remove Participant
+    if (isset($_GET['remove_participant']) && isset($_GET['_wpnonce'])) {
+        $id = absint($_GET['remove_participant']);
+        if (wp_verify_nonce($_GET['_wpnonce'], 'remove_participant_' . $id)) {
+            $wpdb->delete($participants_table, ['id' => $id]);
+            echo '<div class="notice notice-success"><p>Participant removed.</p></div>';
+        }
+    }
+
+    // Get institutions for dropdown
+    $institutions = $wpdb->get_results("SELECT * FROM $institutions_table WHERE is_active = 1 ORDER BY institution_name");
+
+    // Get selected event filter
+    $filter_event = isset($_GET['filter_event']) ? absint($_GET['filter_event']) : 0;
+
+    // Get participants
+    $where = $filter_event ? $wpdb->prepare("WHERE p.event_date_id = %d", $filter_event) : "";
+    $participants = $wpdb->get_results("
+        SELECT p.*, e.event_name, e.event_date, i.institution_name
+        FROM $participants_table p
+        LEFT JOIN $events_table e ON p.event_date_id = e.id
+        LEFT JOIN $institutions_table i ON e.institution_id = i.id
+        $where
+        ORDER BY p.added_date DESC
+    ");
+
+    // Get events for dropdown
+    $events = $wpdb->get_results("
+        SELECT e.*, i.institution_name 
+        FROM $events_table e
+        LEFT JOIN $institutions_table i ON e.institution_id = i.id
+        WHERE e.is_active = 1
+        ORDER BY e.event_date DESC
+    ");
+?>
+    <div class="wrap">
+        <h1>Event Participants Roster</h1>
+        <p>Upload participant names before the event. Names auto-remove when certificates are issued.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+            <!-- Single Add Form -->
+            <div class="card" style="padding: 20px;">
+                <h3 style="margin-top: 0;">Add Single Participant</h3>
+                <form method="post">
+                    <?php wp_nonce_field('add_participant_nonce'); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th><label>Event</label></th>
+                            <td>
+                                <select name="event_date_id" required style="width: 100%;">
+                                    <option value="">-- Select Event --</option>
+                                    <?php foreach ($events as $evt): ?>
+                                        <option value="<?php echo $evt->id; ?>">
+                                            <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name . ' (' . date('M d, Y', strtotime($evt->event_date)) . ')'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th><label>Full Name</label></th>
+                            <td>
+                                <input type="text" name="participant_name" required style="width: 100%;" placeholder="John Doe">
+                            </td>
+                        </tr>
+                    </table>
+                    <button type="submit" name="add_participant" class="button button-primary">Add Participant</button>
+                </form>
+            </div>
+
+            <!-- Bulk Add Form -->
+            <div class="card" style="padding: 20px;">
+                <h3 style="margin-top: 0;">Bulk Add (Paste Names)</h3>
+                <form method="post">
+                    <?php wp_nonce_field('bulk_add_nonce'); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th><label>Event</label></th>
+                            <td>
+                                <select name="bulk_event_id" required style="width: 100%;">
+                                    <option value="">-- Select Event --</option>
+                                    <?php foreach ($events as $evt): ?>
+                                        <option value="<?php echo $evt->id; ?>">
+                                            <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name . ' (' . date('M d, Y', strtotime($evt->event_date)) . ')'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th><label>Names (one per line)</label></th>
+                            <td>
+                                <textarea name="bulk_names" rows="5" style="width: 100%;" placeholder="John Doe
+Jane Smith
+Mike Johnson"></textarea>
+                            </td>
+                        </tr>
+                    </table>
+                    <button type="submit" name="bulk_add_participants" class="button button-primary">Add All Names</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- CSV Upload -->
+        <div class="card" style="padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0;">Upload CSV File</h3>
+            <form method="post" enctype="multipart/form-data">
+                <?php wp_nonce_field('csv_upload_nonce'); ?>
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <select name="csv_event_id" required>
+                        <option value="">-- Select Event --</option>
+                        <?php foreach ($events as $evt): ?>
+                            <option value="<?php echo $evt->id; ?>">
+                                <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <input type="file" name="csv_file" accept=".csv,.txt" required>
+                    <button type="submit" name="csv_upload" class="button button-secondary">Upload CSV</button>
+                    <small>Format: One name per line</small>
+                </div>
+            </form>
+        </div>
+
+        <!-- Filter -->
+        <form method="get" style="margin-bottom: 15px;">
+            <input type="hidden" name="page" value="ofst-participants">
+            <select name="filter_event" onchange="this.form.submit()">
+                <option value="">-- All Events --</option>
+                <?php foreach ($events as $evt): ?>
+                    <option value="<?php echo $evt->id; ?>" <?php selected($filter_event, $evt->id); ?>>
+                        <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
+
+        <!-- Participants Table -->
+        <table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th style="width: 30%;">Name</th>
+                    <th>Event</th>
+                    <th>Institution</th>
+                    <th style="width: 15%;">Added</th>
+                    <th style="width: 80px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($participants)): ?>
+                    <tr>
+                        <td colspan="5">No participants added yet.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($participants as $p): ?>
+                        <tr>
+                            <td><strong><?php echo esc_html($p->full_name); ?></strong></td>
+                            <td><?php echo esc_html($p->event_name ?: '-'); ?></td>
+                            <td><?php echo esc_html($p->institution_name ?: '-'); ?></td>
+                            <td><?php echo date('M d, Y', strtotime($p->added_date)); ?></td>
+                            <td>
+                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-participants&remove_participant=' . $p->id), 'remove_participant_' . $p->id); ?>"
+                                    onclick="return confirm('Remove this participant?');"
+                                    style="color: red;">Remove</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <?php if (!empty($participants)): ?>
+            <p style="color: #666; margin-top: 10px;">
+                <strong><?php echo count($participants); ?></strong> participant(s) pending certificates.
+            </p>
+        <?php endif; ?>
     </div>
 <?php
 }

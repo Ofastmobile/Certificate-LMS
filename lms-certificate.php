@@ -194,10 +194,23 @@ function ofst_cert_migrate_to_v2()
         KEY idx_identifier (identifier, action_type)
     ) $charset_collate;";
 
+    // ========== NEW TABLE 4: Event Participants Roster ==========
+    $sql_participants = "CREATE TABLE IF NOT EXISTS {$prefix}cert_event_participants (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        event_date_id bigint(20) NOT NULL,
+        full_name varchar(200) NOT NULL,
+        added_date datetime NOT NULL,
+        added_by bigint(20) NOT NULL,
+        PRIMARY KEY (id),
+        KEY idx_event (event_date_id),
+        KEY idx_name (full_name)
+    ) $charset_collate;";
+
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql_institutions);
     dbDelta($sql_events);
     dbDelta($sql_rate_limits);
+    dbDelta($sql_participants);
 
     // ========== ADD NEW COLUMNS TO cert_requests ==========
     $table = $prefix . 'cert_requests';
@@ -232,6 +245,100 @@ function ofst_cert_deactivate_plugin()
     wp_clear_scheduled_hook('ofst_cert_daily_cleanup');
     wp_clear_scheduled_hook('ofst_cert_hourly_email_retry');
     flush_rewrite_rules();
+}
+
+/**
+ * =====================================================
+ * AUTOMATIC DATABASE MIGRATION ON ADMIN LOAD
+ * Ensures live sites get updates even without re-activation
+ * =====================================================
+ */
+add_action('admin_init', 'ofst_cert_check_db_version');
+function ofst_cert_check_db_version()
+{
+    $current_db_version = get_option('ofst_cert_db_version', '1.0');
+    $required_db_version = '2.3'; // Increment this when making DB changes
+
+    if (version_compare($current_db_version, $required_db_version, '<')) {
+        // Run all migrations
+        ofst_cert_create_tables(); // Base tables
+        ofst_cert_migrate_to_v2(); // V2.0 columns and tables
+        ofst_cert_run_safe_migrations(); // Safe column additions
+
+        // Update version
+        update_option('ofst_cert_db_version', $required_db_version);
+
+        // Log the update
+        error_log('OFST Certificate: Database migrated from ' . $current_db_version . ' to ' . $required_db_version);
+    }
+}
+
+/**
+ * Safe database migrations - checks before adding columns
+ * Prevents errors on live sites by verifying table/column existence
+ */
+function ofst_cert_run_safe_migrations()
+{
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'ofst_';
+    $table = $prefix . 'cert_requests';
+
+    // Suppress errors temporarily for table checks
+    $wpdb->suppress_errors(true);
+
+    // Check if main table exists
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
+    if (!$table_exists) {
+        $wpdb->suppress_errors(false);
+        error_log('OFST Certificate: Main table does not exist, skipping column migrations');
+        return;
+    }
+
+    // Define all required columns and their definitions
+    $required_columns = array(
+        'template_type' => "varchar(50) DEFAULT 'ofastshop' AFTER vendor_notes",
+        'institution_id' => "bigint(20) DEFAULT NULL AFTER template_type",
+        'event_date_id' => "bigint(20) DEFAULT NULL AFTER institution_id",
+        'pdf_file_path' => "varchar(500) DEFAULT NULL AFTER certificate_file",
+        'certificate_token' => "varchar(64) DEFAULT NULL AFTER certificate_file"
+    );
+
+    // Get existing columns
+    $existing_columns = array();
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $table");
+    foreach ($columns as $col) {
+        $existing_columns[] = $col->Field;
+    }
+
+    // Add missing columns
+    foreach ($required_columns as $column => $definition) {
+        if (!in_array($column, $existing_columns)) {
+            $result = $wpdb->query("ALTER TABLE $table ADD COLUMN $column $definition");
+            if ($result !== false) {
+                error_log("OFST Certificate: Added column '$column' to $table");
+            } else {
+                error_log("OFST Certificate: Failed to add column '$column' - " . $wpdb->last_error);
+            }
+        }
+    }
+
+    // Add indexes safely
+    $indexes = $wpdb->get_results("SHOW INDEX FROM $table");
+    $existing_indexes = array();
+    foreach ($indexes as $idx) {
+        $existing_indexes[] = $idx->Key_name;
+    }
+
+    // Add certificate_token index if missing
+    if (!in_array('idx_token', $existing_indexes) && in_array('certificate_token', $existing_columns)) {
+        $wpdb->query("ALTER TABLE $table ADD INDEX idx_token (certificate_token)");
+    }
+
+    // Ensure product_id and product_name are nullable (for Cromemart)
+    $wpdb->query("ALTER TABLE $table MODIFY product_id bigint(20) DEFAULT NULL");
+    $wpdb->query("ALTER TABLE $table MODIFY product_name varchar(255) DEFAULT NULL");
+
+    $wpdb->suppress_errors(false);
 }
 
 /**

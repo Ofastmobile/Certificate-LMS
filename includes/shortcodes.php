@@ -365,7 +365,7 @@ function ofst_cert_student_request_form()
         });
     </script>
 
-<?php
+    <?php
     return ob_get_clean();
 }
 add_shortcode('cert_student_request', 'ofst_cert_student_request_form');
@@ -570,8 +570,8 @@ function ofst_cert_process_student_request()
     }
 }
 
-// Display success message
-add_action('wp_head', 'ofst_cert_display_messages');
+// Display success message as modern toast notification
+add_action('wp_footer', 'ofst_cert_display_messages');
 function ofst_cert_display_messages()
 {
     if (isset($_GET['cert_success'])) {
@@ -583,7 +583,165 @@ function ofst_cert_display_messages()
         );
 
         if (isset($messages[$type])) {
-            echo '<div class="ofst-cert-notice success" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; margin: 20px; border-radius: 4px;">' . esc_html($messages[$type]) . '</div>';
+    ?>
+            <style>
+                .ofst-toast-container {
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    z-index: 999999;
+                    max-width: 400px;
+                    animation: ofst-slide-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .ofst-toast {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 12px;
+                    padding: 16px 20px;
+                    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+                    color: white;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 40px rgba(5, 150, 105, 0.4), 0 4px 12px rgba(0, 0, 0, 0.1);
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .ofst-toast-icon {
+                    flex-shrink: 0;
+                    width: 24px;
+                    height: 24px;
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                }
+
+                .ofst-toast-content {
+                    flex: 1;
+                }
+
+                .ofst-toast-title {
+                    font-weight: 600;
+                    font-size: 15px;
+                    margin-bottom: 4px;
+                }
+
+                .ofst-toast-message {
+                    opacity: 0.95;
+                    font-size: 13px;
+                }
+
+                .ofst-toast-close {
+                    flex-shrink: 0;
+                    cursor: pointer;
+                    opacity: 0.7;
+                    font-size: 18px;
+                    line-height: 1;
+                    padding: 4px;
+                    transition: opacity 0.2s;
+                }
+
+                .ofst-toast-close:hover {
+                    opacity: 1;
+                }
+
+                .ofst-toast-progress {
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    height: 3px;
+                    background: rgba(255, 255, 255, 0.5);
+                    border-radius: 0 0 12px 12px;
+                    animation: ofst-progress 5s linear forwards;
+                }
+
+                @keyframes ofst-slide-in {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+
+                @keyframes ofst-slide-out {
+                    from {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+
+                    to {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                }
+
+                @keyframes ofst-progress {
+                    from {
+                        width: 100%;
+                    }
+
+                    to {
+                        width: 0%;
+                    }
+                }
+
+                .ofst-toast-hiding {
+                    animation: ofst-slide-out 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                }
+
+                @media (max-width: 480px) {
+                    .ofst-toast-container {
+                        left: 15px;
+                        right: 15px;
+                        max-width: none;
+                    }
+                }
+            </style>
+
+            <div class="ofst-toast-container" id="ofst-toast">
+                <div class="ofst-toast" style="position: relative; overflow: hidden;">
+                    <div class="ofst-toast-icon">✓</div>
+                    <div class="ofst-toast-content">
+                        <div class="ofst-toast-title">Success!</div>
+                        <div class="ofst-toast-message"><?php echo esc_html($messages[$type]); ?></div>
+                    </div>
+                    <div class="ofst-toast-close" onclick="ofstCloseToast()">&times;</div>
+                    <div class="ofst-toast-progress"></div>
+                </div>
+            </div>
+
+            <script>
+                function ofstCloseToast() {
+                    var toast = document.getElementById('ofst-toast');
+                    if (toast) {
+                        toast.classList.add('ofst-toast-hiding');
+                        setTimeout(function() {
+                            toast.remove();
+                        }, 300);
+                    }
+                }
+
+                // Auto-hide after 5 seconds
+                setTimeout(function() {
+                    ofstCloseToast();
+                }, 5000);
+
+                // Remove query param from URL without refresh (clean URL)
+                if (window.history && window.history.replaceState) {
+                    var url = new URL(window.location.href);
+                    url.searchParams.delete('cert_success');
+                    window.history.replaceState({}, document.title, url.toString());
+                }
+            </script>
+    <?php
         }
     }
 }
@@ -608,7 +766,7 @@ function ofst_cert_verification_form()
     $turnstile_site_key = ofst_cert_get_setting('turnstile_site_key');
 
     ob_start();
-?>
+    ?>
     <div class="ofst-cert-verify-container">
         <div class="ofst-cert-card">
             <h2 class="ofst-cert-title">Verify Certificate</h2>
