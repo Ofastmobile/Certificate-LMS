@@ -214,6 +214,13 @@ function ofst_cert_migrate_to_v2()
         $wpdb->query("ALTER TABLE $table MODIFY product_id bigint(20) DEFAULT NULL");
         $wpdb->query("ALTER TABLE $table MODIFY product_name varchar(255) DEFAULT NULL");
     }
+
+    // V2.1: Add certificate_token column for secure access
+    $token_col = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'certificate_token'");
+    if (empty($token_col)) {
+        $wpdb->query("ALTER TABLE $table ADD COLUMN certificate_token varchar(64) DEFAULT NULL AFTER certificate_file");
+        $wpdb->query("ALTER TABLE $table ADD INDEX idx_token (certificate_token)");
+    }
 }
 
 // Plugin deactivation hook

@@ -57,6 +57,13 @@ function ofst_cert_load_template($template_type, $request)
 {
     global $wpdb;
 
+    // Security: Validate template type - only allow known templates
+    $allowed_templates = ['ofastshop', 'cromemart'];
+    if (!in_array($template_type, $allowed_templates)) {
+        error_log("OFST Certificate: Invalid template type attempted: " . $template_type);
+        return false;
+    }
+
     // Determine template file path
     $template_dir = OFST_CERT_PLUGIN_DIR . 'certficate-template-code/';
 
@@ -64,6 +71,15 @@ function ofst_cert_load_template($template_type, $request)
         $template_file = $template_dir . 'cromemart-cert.html';
     } else {
         $template_file = $template_dir . 'ofastshop-certificate.html';
+    }
+
+    // Security: Verify file path is within the allowed directory (prevent path traversal)
+    $real_template_dir = realpath($template_dir);
+    $real_template_file = realpath($template_file);
+
+    if (!$real_template_file || strpos($real_template_file, $real_template_dir) !== 0) {
+        error_log("OFST Certificate: Path traversal attempt detected for template: " . $template_file);
+        return false;
     }
 
     if (!file_exists($template_file)) {
@@ -140,9 +156,14 @@ function ofst_cert_save_html_certificate($html, $certificate_id, $template_type)
         wp_mkdir_p($cert_dir);
         // Add index.php for security
         file_put_contents($cert_dir . 'index.php', '<?php // Silence is golden');
+        // Add .htaccess to prevent direct access
+        file_put_contents($cert_dir . '.htaccess', "Options -Indexes\nDeny from all");
     }
 
-    // Generate unique filename
+    // Generate secure token for this certificate
+    $access_token = wp_generate_password(32, false, false);
+
+    // Generate unique filename with token
     $hash = md5($certificate_id . time() . wp_rand());
     $filename = $template_type . '_' . $certificate_id . '_' . substr($hash, 0, 8) . '.html';
     $file_path = $cert_dir . $filename;
@@ -157,11 +178,20 @@ function ofst_cert_save_html_certificate($html, $certificate_id, $template_type)
         ];
     }
 
+    // Store token in database for verification
+    global $wpdb;
+    $wpdb->update(
+        $wpdb->prefix . 'ofst_cert_requests',
+        ['certificate_token' => $access_token],
+        ['certificate_id' => $certificate_id]
+    );
+
     return [
         'success' => true,
         'file_path' => $file_path,
         'file_url' => $upload_dir['baseurl'] . '/certificates/' . $filename,
-        'filename' => $filename
+        'filename' => $filename,
+        'access_token' => $access_token
     ];
 }
 
@@ -219,9 +249,51 @@ function ofst_cert_generate_qr_code($url, $certificate_id)
 }
 
 /**
- * Get certificate view URL (for viewing HTML certificate)
+ * Get secure certificate view URL (with token)
  */
-function ofst_cert_get_view_url($certificate_id)
+function ofst_cert_get_view_url($certificate_id, $token = null)
 {
-    return site_url('/view-certificate/?cert_id=' . urlencode($certificate_id));
+    $url = site_url('/view-certificate/?cert_id=' . urlencode($certificate_id));
+    if ($token) {
+        $url .= '&token=' . urlencode($token);
+    }
+    return $url;
+}
+
+/**
+ * Verify certificate token and serve certificate file
+ * This function should be called by a rewrite rule or shortcode
+ */
+function ofst_cert_serve_certificate($certificate_id, $token)
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    // Get certificate with token verification
+    $cert = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE certificate_id = %s AND status = 'issued'",
+        $certificate_id
+    ));
+
+    if (!$cert) {
+        return ['success' => false, 'error' => 'Certificate not found'];
+    }
+
+    // Verify token if certificate has one
+    if (!empty($cert->certificate_token) && $cert->certificate_token !== $token) {
+        // Allow access without token for backward compatibility (old certificates)
+        // but log the attempt
+        error_log("OFST Certificate: Invalid token attempt for certificate $certificate_id");
+        return ['success' => false, 'error' => 'Invalid access token'];
+    }
+
+    if (empty($cert->certificate_file)) {
+        return ['success' => false, 'error' => 'Certificate file not available'];
+    }
+
+    return [
+        'success' => true,
+        'file_url' => $cert->certificate_file,
+        'certificate' => $cert
+    ];
 }
