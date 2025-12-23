@@ -756,8 +756,14 @@ function ofst_cert_verify_turnstile($token)
 {
     $secret = ofst_cert_get_setting('turnstile_secret_key');
 
-    if (empty($secret) || empty($token)) {
+    // If Turnstile is not configured (no secret key), skip verification
+    if (empty($secret)) {
         return true; // Allow if Turnstile not configured
+    }
+
+    // Turnstile IS configured - token is REQUIRED
+    if (empty($token)) {
+        return false; // Reject if no token provided but Turnstile is configured
     }
 
     $response = wp_remote_post('https://challenges.cloudflare.com/turnstile/v0/siteverify', array(

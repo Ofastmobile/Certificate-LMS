@@ -98,7 +98,7 @@
 .ofst-cert-form .ofst-form-row {
     display: flex;
     gap: 20px;
-    margin-bottom: 4px;
+    margin-bottom: 20px;
 }
 
 .ofst-cert-form .ofst-form-group {
@@ -476,6 +476,7 @@
         opacity: 0;
         transform: translateY(20px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);

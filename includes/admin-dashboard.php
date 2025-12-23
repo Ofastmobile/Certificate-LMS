@@ -169,9 +169,16 @@ function ofst_cert_admin_dashboard()
 
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
-    // Get all pending requests (students only now)
-    $requests = $wpdb->get_results("SELECT * FROM $table WHERE status = 'pending' ORDER BY requested_date DESC");
+    // Get all pending requests with event theme for Cromemart certificates
+    $requests = $wpdb->get_results("
+        SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r 
+        LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        WHERE r.status = 'pending' 
+        ORDER BY r.requested_date DESC
+    ");
 
 ?>
     <div class="wrap">
@@ -221,7 +228,18 @@ function ofst_cert_admin_dashboard()
                                         <?php echo $req->template_type === 'cromemart' ? 'Cromemart' : 'Ofastshop'; ?>
                                     </span>
                                 </td>
-                                <td><?php echo esc_html($req->product_name ?: 'Event Certificate'); ?></td>
+                                <td>
+                                    <?php
+                                    if ($req->template_type === 'cromemart') {
+                                        // Show event theme for Cromemart certificates
+                                        $display = $req->event_theme ?: ($req->event_name ?: '-');
+                                        echo esc_html($display);
+                                    } else {
+                                        // Show product name for Ofastshop
+                                        echo esc_html($req->product_name ?: '-');
+                                    }
+                                    ?>
+                                </td>
                                 <td><?php echo date('M d, Y', strtotime($req->requested_date)); ?></td>
                                 <td>
                                     <a href="?page=ofst-certificates&action=view&cert_id=<?php echo $req->id; ?>" class="button button-small">View</a>
@@ -240,7 +258,14 @@ function ofst_cert_admin_dashboard()
         <!-- View Details Modal -->
         <?php if (isset($_GET['action']) && $_GET['action'] === 'view' && isset($_GET['cert_id'])):
             $cert_id = absint($_GET['cert_id']);
-            $cert = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $cert_id));
+            // Get certificate with event data for Cromemart
+            $cert = $wpdb->get_row($wpdb->prepare("
+                SELECT r.*, e.event_theme, e.event_name, i.institution_name 
+                FROM $table r 
+                LEFT JOIN $event_table e ON r.event_date_id = e.id 
+                LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
+                WHERE r.id = %d
+            ", $cert_id));
             if ($cert):
         ?>
                 <div class="ofst-cert-modal" style="display:block;">
@@ -269,10 +294,25 @@ function ofst_cert_admin_dashboard()
                                 <th>Phone:</th>
                                 <td><?php echo esc_html($cert->phone); ?></td>
                             </tr>
-                            <tr>
-                                <th>Course:</th>
-                                <td><?php echo esc_html($cert->product_name); ?></td>
-                            </tr>
+                            <?php if ($cert->template_type === 'cromemart'): ?>
+                                <tr>
+                                    <th>Institution:</th>
+                                    <td><?php echo esc_html($cert->institution_name ?: '-'); ?></td>
+                                </tr>
+                                <tr>
+                                    <th>Event:</th>
+                                    <td><?php echo esc_html($cert->event_name ?: '-'); ?></td>
+                                </tr>
+                                <tr>
+                                    <th>Course:</th>
+                                    <td><?php echo esc_html($cert->event_theme ?: '-'); ?></td>
+                                </tr>
+                            <?php else: ?>
+                                <tr>
+                                    <th>Course:</th>
+                                    <td><?php echo esc_html($cert->product_name ?: '-'); ?></td>
+                                </tr>
+                            <?php endif; ?>
                             <?php if ($cert->instructor_name): ?>
                                 <tr>
                                     <th>Instructor:</th>
@@ -529,6 +569,7 @@ function ofst_cert_issued_page()
 {
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
     // Handle resend email action
     if (isset($_GET['action']) && $_GET['action'] === 'resend' && isset($_GET['cert_id'])) {
@@ -542,7 +583,15 @@ function ofst_cert_issued_page()
         }
     }
 
-    $certificates = $wpdb->get_results("SELECT * FROM $table WHERE status = 'issued' ORDER BY processed_date DESC LIMIT 100");
+    // Get issued certificates with event theme for Cromemart
+    $certificates = $wpdb->get_results("
+        SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r 
+        LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        WHERE r.status = 'issued' 
+        ORDER BY r.processed_date DESC 
+        LIMIT 100
+    ");
 
 ?>
     <div class="wrap">
@@ -572,7 +621,17 @@ function ofst_cert_issued_page()
                         <tr>
                             <td><strong><?php echo esc_html($cert->certificate_id); ?></strong></td>
                             <td><?php echo esc_html($cert->first_name . ' ' . $cert->last_name); ?></td>
-                            <td><?php echo esc_html($cert->product_name); ?></td>
+                            <td>
+                                <?php
+                                if ($cert->template_type === 'cromemart') {
+                                    // Show event theme for Cromemart certificates
+                                    $display = $cert->event_theme ?: ($cert->event_name ?: '-');
+                                    echo esc_html($display);
+                                } else {
+                                    echo esc_html($cert->product_name ?: '-');
+                                }
+                                ?>
+                            </td>
                             <td><?php echo date('M d, Y', strtotime($cert->processed_date)); ?></td>
                             <td><?php echo $issued_by ? esc_html($issued_by->display_name) : 'System'; ?></td>
                             <td>
@@ -602,6 +661,7 @@ function ofst_cert_failed_page()
 {
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
     // Handle retry actions
     if (isset($_POST['retry_action']) && isset($_POST['cert_id'])) {
@@ -633,10 +693,14 @@ function ofst_cert_failed_page()
         }
     }
 
-    // Get failed certificates (generation_failed or email_failed status)
-    $failed = $wpdb->get_results(
-        "SELECT * FROM $table WHERE status IN ('generation_failed', 'email_failed') ORDER BY processed_date DESC"
-    );
+    // Get failed certificates with event theme for Cromemart
+    $failed = $wpdb->get_results("
+        SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r 
+        LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        WHERE r.status IN ('generation_failed', 'email_failed') 
+        ORDER BY r.processed_date DESC
+    ");
 
 ?>
     <div class="wrap">
@@ -667,7 +731,16 @@ function ofst_cert_failed_page()
                             <td><strong><?php echo esc_html($cert->certificate_id); ?></strong></td>
                             <td><?php echo esc_html($cert->first_name . ' ' . $cert->last_name); ?></td>
                             <td><?php echo esc_html($cert->email); ?></td>
-                            <td><?php echo esc_html($cert->product_name); ?></td>
+                            <td>
+                                <?php
+                                if ($cert->template_type === 'cromemart') {
+                                    $display = $cert->event_theme ?: ($cert->event_name ?: '-');
+                                    echo esc_html($display);
+                                } else {
+                                    echo esc_html($cert->product_name ?: '-');
+                                }
+                                ?>
+                            </td>
                             <td>
                                 <?php if ($cert->status === 'generation_failed'): ?>
                                     <span style="background: #f8d7da; color: #721c24; padding: 3px 8px; border-radius: 3px; font-size: 11px;">

@@ -343,10 +343,22 @@ function ofst_cert_student_request_form()
             // Prevent form submission if invalid
             if (form) {
                 form.addEventListener('submit', function(e) {
+                    // Check course selection for Ofastshop
                     if (templateInput.value === 'ofastshop' && (!productSelect || !productSelect.value)) {
                         e.preventDefault();
                         alert('Please select a course to request a certificate for.');
                         return false;
+                    }
+
+                    // Check Turnstile if present
+                    var turnstileWidget = document.querySelector('.cf-turnstile');
+                    if (turnstileWidget) {
+                        var turnstileResponse = document.querySelector('input[name="cf-turnstile-response"]');
+                        if (!turnstileResponse || !turnstileResponse.value) {
+                            e.preventDefault();
+                            alert('Please complete the security verification (CAPTCHA).');
+                            return false;
+                        }
                     }
                 });
             }
@@ -619,6 +631,19 @@ function ofst_cert_verification_form()
 
                 <button type="submit" name="ofst_submit_verify" class="ofst-btn ofst-btn-primary">Verify Certificate</button>
             </form>
+
+            <?php if (!empty($turnstile_site_key)): ?>
+                <script>
+                    document.getElementById('ofst-verify-form').addEventListener('submit', function(e) {
+                        var turnstileResponse = document.querySelector('input[name="cf-turnstile-response"]');
+                        if (!turnstileResponse || !turnstileResponse.value) {
+                            e.preventDefault();
+                            alert('Please complete the security verification (CAPTCHA).');
+                            return false;
+                        }
+                    });
+                </script>
+            <?php endif; ?>
 
             <?php
             // Display verification results if form submitted
