@@ -1,14 +1,16 @@
 <?php
 
 /**
- * Certificate Generator - V2.0 with Dompdf
- * Uses actual HTML template files from certficate-template-code folder
+ * Certificate Generator - V2.5 HTML-Only Version
+ * Generates HTML certificates (no PDF)
+ * Uses template files from certficate-template-code folder
  */
 
 if (!defined('ABSPATH')) exit;
 
 /**
  * Main certificate generation function
+ * Generates HTML certificate and stores it
  */
 function ofst_cert_generate_certificate($request_id)
 {
@@ -30,8 +32,8 @@ function ofst_cert_generate_certificate($request_id)
         return ['success' => false, 'error' => 'Template file not found'];
     }
 
-    // Generate PDF
-    $result = ofst_cert_generate_pdf($html, $request->certificate_id, $template_type);
+    // Generate HTML certificate file
+    $result = ofst_cert_save_html_certificate($html, $request->certificate_id, $template_type);
 
     if (!$result['success']) {
         return $result;
@@ -39,7 +41,6 @@ function ofst_cert_generate_certificate($request_id)
 
     // Update database
     $wpdb->update($table, [
-        'pdf_file_path' => $result['file_path'],
         'certificate_file' => $result['file_url'],
         'status' => 'approved',
         'processed_date' => current_time('mysql'),
@@ -78,10 +79,15 @@ function ofst_cert_load_template($template_type, $request)
     $completion_date = $request->completion_date ? date('F d, Y', strtotime($request->completion_date)) : date('F d, Y');
     $issue_date = date('F d, Y');
 
+    // Generate QR code for verification
+    $verification_url = site_url('/verify-certificate/?cert_id=' . urlencode($certificate_id));
+    $qr_code_url = ofst_cert_generate_qr_code($verification_url, $certificate_id);
+
     // Common placeholder replacements
     $html = str_replace('{{CERTIFICATE_ID}}', esc_html($certificate_id), $html);
     $html = str_replace('{{STUDENT_NAME}}', esc_html($student_name), $html);
     $html = str_replace('{{ISSUE_DATE}}', esc_html($issue_date), $html);
+    $html = str_replace('{{QR_CODE_PATH}}', esc_url($qr_code_url), $html);
 
     if ($template_type === 'ofastshop') {
         // Ofastshop specific replacements
@@ -111,69 +117,45 @@ function ofst_cert_load_template($template_type, $request)
         $event_date = $event ? date('F d, Y', strtotime($event->event_date)) : date('F d, Y');
         $event_theme = $event && isset($event->event_theme) ? $event->event_theme : '';
 
-        // Replace placeholders if they exist
+        // Replace placeholders
         $html = str_replace('{{EVENT_NAME}}', esc_html($event_name), $html);
         $html = str_replace('{{EVENT_THEME}}', esc_html($event_theme), $html);
         $html = str_replace('{{EVENT_DATE}}', esc_html($event_date), $html);
         $html = str_replace('{{INSTITUTION_NAME}}', esc_html($institution_name), $html);
-
-        // Also replace the entire description paragraph using regex (handles curly quotes)
-        $new_description = 'has actively participated in the ' . esc_html($event_name);
-        if (!empty($event_theme)) {
-            $new_description .= ' themed "' . esc_html($event_theme) . '",';
-        }
-        $new_description .= ' held on ' . esc_html($event_date) . ', at the ' . esc_html($institution_name) . '.';
-
-        // Pattern to match the description paragraph content
-        $pattern = '/<p class="description">\s*has actively participated in.*?<\/p>/s';
-        $replacement = '<p class="description">' . "\n        " . $new_description . "\n      </p>";
-        $html = preg_replace($pattern, $replacement, $html);
     }
 
     return $html;
 }
 
 /**
- * Generate PDF using Dompdf
+ * Save HTML certificate to file
  */
-function ofst_cert_generate_pdf($html, $certificate_id, $template_type)
+function ofst_cert_save_html_certificate($html, $certificate_id, $template_type)
 {
-    $autoload_path = OFST_CERT_PLUGIN_DIR . 'pdf/autoload.php';
-
-    if (!file_exists($autoload_path)) {
-        return ['success' => false, 'error' => 'PDF autoloader not found at: ' . $autoload_path];
-    }
-
-    // Load unified autoloader (includes stubs + Dompdf)
-    require_once $autoload_path;
-
-    $options = new \Dompdf\Options();
-    $options->set('isRemoteEnabled', true);  // Allow loading images from URLs (R2 bucket)
-    $options->set('defaultFont', 'Helvetica');
-    $options->set('isHtml5ParserEnabled', true);
-    $options->set('isFontSubsettingEnabled', false);  // Disable font subsetting to use built-in fonts
-
-    $dompdf = new \Dompdf\Dompdf($options);
-    $dompdf->loadHtml($html);
-    $dompdf->setPaper('A4', 'landscape');
-    $dompdf->render();
-
     // Create certificates directory
     $upload_dir = wp_upload_dir();
     $cert_dir = $upload_dir['basedir'] . '/certificates/';
 
     if (!file_exists($cert_dir)) {
         wp_mkdir_p($cert_dir);
-        file_put_contents($cert_dir . '.htaccess', 'deny from all');
+        // Add index.php for security
+        file_put_contents($cert_dir . 'index.php', '<?php // Silence is golden');
     }
 
     // Generate unique filename
     $hash = md5($certificate_id . time() . wp_rand());
-    $filename = $template_type . '_' . $certificate_id . '_' . substr($hash, 0, 8) . '.pdf';
+    $filename = $template_type . '_' . $certificate_id . '_' . substr($hash, 0, 8) . '.html';
     $file_path = $cert_dir . $filename;
 
-    // Save PDF
-    file_put_contents($file_path, $dompdf->output());
+    // Save HTML file
+    $saved = file_put_contents($file_path, $html);
+
+    if ($saved === false) {
+        return [
+            'success' => false,
+            'error' => 'Failed to save certificate file'
+        ];
+    }
 
     return [
         'success' => true,
@@ -181,4 +163,48 @@ function ofst_cert_generate_pdf($html, $certificate_id, $template_type)
         'file_url' => $upload_dir['baseurl'] . '/certificates/' . $filename,
         'filename' => $filename
     ];
+}
+
+/**
+ * Generate QR code for certificate verification
+ * Uses the phpqrcode library already in the includes folder
+ */
+function ofst_cert_generate_qr_code($url, $certificate_id)
+{
+    // Check if phpqrcode exists
+    $qr_lib = OFST_CERT_PLUGIN_DIR . 'includes/phpqrcode/qrlib.php';
+
+    if (!file_exists($qr_lib)) {
+        // Return a placeholder if QR library not found
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode($url);
+    }
+
+    require_once $qr_lib;
+
+    // Create QR code directory
+    $upload_dir = wp_upload_dir();
+    $qr_dir = $upload_dir['basedir'] . '/certificates/qr/';
+
+    if (!file_exists($qr_dir)) {
+        wp_mkdir_p($qr_dir);
+    }
+
+    // Generate QR code file
+    $qr_filename = 'qr_' . $certificate_id . '.png';
+    $qr_path = $qr_dir . $qr_filename;
+
+    // Only generate if doesn't exist
+    if (!file_exists($qr_path)) {
+        QRcode::png($url, $qr_path, QR_ECLEVEL_M, 4);
+    }
+
+    return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
+}
+
+/**
+ * Get certificate view URL (for viewing HTML certificate)
+ */
+function ofst_cert_get_view_url($certificate_id)
+{
+    return site_url('/view-certificate/?cert_id=' . urlencode($certificate_id));
 }

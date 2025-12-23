@@ -1,9 +1,7 @@
 {
     "name": "ofastshop/lms-certificate",
-    "description": "LMS Certificate Management System with PDF Generation",
-    "require": {
-        "dompdf/dompdf": "^2.0"
-    },
+    "description": "LMS Certificate Management System with HTML Certificate Generation",
+    "require": {},
     "config": {
         "optimize-autoloader": true
     }

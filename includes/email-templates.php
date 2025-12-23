@@ -188,7 +188,7 @@ function ofst_cert_send_certificate_email($request)
         'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
     );
 
-    // Attach certificate file if it exists and is NOT an HTML file (only attach PDFs/Images if we ever switch back)
+    // Note: We don't attach HTML certificate files since they're meant to be viewed online
     $attachments = array();
     if (!empty($request->certificate_file)) {
         // Convert URL to local path for attachment

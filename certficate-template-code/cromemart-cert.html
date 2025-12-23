@@ -1,15 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Certificate of Participation</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Great+Vibes&family=Montserrat:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <style>
-    @page {
-      size: A4 landscape;
-      margin: 0;
-    }
-
     * {
       margin: 0;
       padding: 0;
@@ -17,185 +16,333 @@
     }
 
     body {
-      font-family: Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       background: #d1d5db;
+      padding: 20px;
+      font-family: 'Montserrat', sans-serif;
     }
 
     .certificate {
-      width: 842px;
-      height: 595px;
-      background-color: #0a3d2e;
-      padding: 15px;
-      margin: 0 auto;
+      width: 900px;
+      max-width: 100%;
+      aspect-ratio: 1.4;
+      background: linear-gradient(135deg, #00231c 0%, #0f3422 50%, #2df000 100%);
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
     }
 
     .certificate-inner {
       width: 100%;
       height: 100%;
-      background-color: #fafafa;
+      background: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
       border: 4px solid #00231c;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 60px;
     }
 
-    .main-table {
-      width: 100%;
-      height: 100%;
-      border-collapse: collapse;
-    }
-
-    .main-table td {
-      vertical-align: middle;
-      text-align: center;
+    .certificate-inner::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: repeating-linear-gradient(135deg, transparent, transparent 10px, rgba(0, 0, 0, 0.02) 10px, rgba(0, 0, 0, 0.02) 11px);
+      pointer-events: none;
     }
 
     .corner {
-      width: 60px;
-      height: 60px;
-      background-color: #0a3d2e;
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      overflow: hidden;
+    }
+
+    .corner::before {
+      content: '';
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      background: linear-gradient(135deg, #00231c 0%, #0f3422 50%, #2df000 100%);
+      border: 4px solid #00231c;
     }
 
     .corner-tl {
+      top: -4px;
+      left: -4px;
+    }
+
+    .corner-tl::before {
+      top: -100px;
+      left: -100px;
       border-radius: 0 0 100% 0;
     }
 
     .corner-tr {
+      top: -4px;
+      right: -4px;
+    }
+
+    .corner-tr::before {
+      top: -100px;
+      right: -100px;
       border-radius: 0 0 0 100%;
     }
 
     .corner-bl {
+      bottom: -4px;
+      left: -4px;
+    }
+
+    .corner-bl::before {
+      bottom: -100px;
+      left: -100px;
       border-radius: 0 100% 0 0;
     }
 
     .corner-br {
+      bottom: -4px;
+      right: -4px;
+    }
+
+    .corner-br::before {
+      bottom: -100px;
+      right: -100px;
       border-radius: 100% 0 0 0;
     }
 
-    .header-cell {
-      vertical-align: top;
-      padding-top: 8px;
-    }
-
     .logo {
-      width: 180px;
+      width: 280px;
       height: auto;
+      object-fit: contain;
+      margin-bottom: 5px;
     }
 
     .title {
-      font-size: 32px;
-      font-weight: bold;
-      letter-spacing: 8px;
+      font-family: 'Playfair Display', serif;
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: 12px;
       color: #1a1a2e;
-      margin: 8px 0;
+      margin-top: 0;
       text-transform: uppercase;
     }
 
     .subtitle {
-      font-size: 13px;
-      letter-spacing: 4px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 16px;
+      letter-spacing: 6px;
       color: #1a1a2e;
+      margin-top: 5px;
       text-transform: uppercase;
-      margin-bottom: 12px;
     }
 
     .presented-text {
-      font-size: 10px;
-      letter-spacing: 2px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 12px;
+      letter-spacing: 3px;
       color: #555;
+      margin-top: 25px;
       text-transform: uppercase;
-      margin: 12px 0 6px 0;
     }
 
     .divider {
-      width: 160px;
+      width: 200px;
       height: 2px;
-      background-color: #00231c;
-      margin: 06px auto;
+      background: linear-gradient(90deg, transparent, #00231c, transparent);
+      margin: 12px 0;
+    }
+
+    .name-row {
+      position: relative;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin: 8px 0 0 0;
     }
 
     .recipient-name {
-      font-size: 34px;
-      font-style: italic;
+      font-family: 'Great Vibes', cursive;
+      font-size: 40px;
       color: #1a1a2e;
-      margin: 12px 0 4px 0;
+      margin: 10px 0;
     }
 
     .description {
+      font-family: 'Montserrat', sans-serif;
       font-size: 11px;
       font-style: italic;
       color: #666;
       text-align: center;
-      max-width: 520px;
-      line-height: 1.6;
-      margin: 8px auto;
+      max-width: 500px;
+      line-height: 1.8;
+      margin-top: 10px;
     }
 
-    .description strong {
-      font-weight: bold;
-      color: #1a1a2e;
+    .signature-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      width: 100%;
+      margin-top: auto;
+      padding: 0 40px;
+      position: relative;
     }
 
-    .signature-table {
-      width: 90%;
-      margin: 0 auto;
-      border-collapse: collapse;
-    }
-
-    .signature-table td {
-      vertical-align: bottom;
+    .signature-box {
       text-align: center;
-      padding: 0 15px;
+      min-width: 150px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
-    .signature-cell {
-      width: 150px;
-    }
-
-    .seal-cell {
+    .signature-image {
       width: 120px;
-    }
-
-    .signature-img {
-      width: 90px;
-      height: 35px;
+      height: 50px;
+      object-fit: contain;
+      margin-bottom: -5px;
     }
 
     .signature-line {
-      width: 120px;
+      width: 150px;
       height: 1px;
-      background-color: #1a1a2e;
-      margin: 0 auto 4px auto;
+      background: #1a1a2e;
+      margin-bottom: 8px;
     }
 
     .signature-label {
-      font-size: 9px;
-      font-weight: bold;
-      letter-spacing: 1px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
       color: #1a1a2e;
       text-transform: uppercase;
     }
 
-    .seal-img {
-      width: 60px;
-      height: 60px;
+    .seal {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      background: transparent;
+    }
+
+    .seal img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
     }
 
     .cert-id {
-      font-size: 8px;
-      font-weight: bold;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
       letter-spacing: 1px;
       color: #1a1a2e;
       text-transform: uppercase;
       margin-top: 4px;
     }
 
-    .date-text {
-      font-size: 11px;
-      color: #1a1a2e;
-      margin-bottom: 4px;
+    .qr-section {
+      position: absolute;
+      right: 40px;
+      bottom: 20px;
     }
 
-    .qr-img {
-      width: 45px;
-      height: 45px;
+    .qr-section img {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    /* ===== PRINT STYLES ===== */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 0;
+      }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      html,
+      body {
+        width: 297mm;
+        height: 210mm;
+        margin: 0;
+        padding: 0;
+        background: white !important;
+      }
+
+      body {
+        display: block;
+        min-height: auto;
+        padding: 0;
+      }
+
+      .certificate {
+        width: 297mm;
+        height: 210mm;
+        max-width: none;
+        aspect-ratio: auto;
+        border-radius: 0;
+        box-shadow: none;
+        margin: 0;
+        padding: 15px;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+
+      .certificate-inner {
+        padding: 30px 50px;
+      }
+
+      .corner::before {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .print-btn {
+        display: none !important;
+      }
+    }
+
+    /* Print button styling */
+    .print-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #00231c;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+    }
+
+    .print-btn:hover {
+      background: #004d3d;
     }
   </style>
 </head>
@@ -203,90 +350,64 @@
 <body>
   <div class="certificate">
     <div class="certificate-inner">
-      <table class="main-table">
-        <!-- Top row with corners -->
-        <tr>
-          <td class="corner corner-tl"></td>
-          <td colspan="3"></td>
-          <td class="corner corner-tr"></td>
-        </tr>
+      <div class="corner corner-tl"></div>
+      <div class="corner corner-tr"></div>
+      <div class="corner corner-bl"></div>
+      <div class="corner corner-br"></div>
 
-        <!-- Logo and Title -->
-        <tr>
-          <td></td>
-          <td colspan="3" class="header-cell">
-            <img
-              src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163142/Cromemart-Logo-2.webp"
-              alt="Logo" class="logo">
-            <h1 class="title">Certificate</h1>
-            <p class="subtitle">of Participation</p>
-          </td>
-          <td></td>
-        </tr>
+      <img
+        src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163142/Cromemart-Logo-2.webp"
+        alt="Logo" class="logo">
 
-        <!-- Presented to section -->
-        <tr>
-          <td></td>
-          <td colspan="3" style="vertical-align: top;">
-            <p class="presented-text">This certificate is proudly presented to</p>
-            <div class="divider"></div>
-            <h2 class="recipient-name">{{STUDENT_NAME}}</h2>
-            <div class="divider"></div>
-            <p class="description">
-              has actively participated in the <strong>{{EVENT_NAME}}</strong> themed "<strong>{{EVENT_THEME}}</strong>"
-              held on <strong>{{EVENT_DATE}}</strong>, at the
-              <strong>{{INSTITUTION_NAME}}</strong>. This certificate is awarded in recognition of the participant's
-              commitment to learning about Artificial Intelligence, digital skills, innovation, and emerging
-              opportunities shaping the
-              future of work and technology.
-            </p>
-          </td>
-          <td></td>
-        </tr>
+      <h1 class="title">Certificate</h1>
+      <p class="subtitle">of Participation</p>
 
-        <!-- Signature Section -->
-        <tr>
-          <td></td>
-          <td colspan="3" style="vertical-align: bottom; padding-bottom: 12px; padding-top: 20px;">
-            <table class="signature-table">
-              <tr>
-                <td class="signature-cell">
-                  <img
-                    src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163117/signature.webp"
-                    alt="Signature" class="signature-img">
-                  <div class="signature-line"></div>
-                  <span class="signature-label">Signature</span>
-                </td>
-                <td class="seal-cell">
-                  <img
-                    src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163132/Stamp.webp"
-                    alt="Seal" class="seal-img">
-                  <div class="cert-id">{{CERTIFICATE_ID}}</div>
-                </td>
-                <td class="signature-cell">
-                  <div class="date-text">{{ISSUE_DATE}}</div>
-                  <div class="signature-line"></div>
-                  <span class="signature-label">Date</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-          <td></td>
-        </tr>
+      <p class="presented-text">This certificate is proudly presented to</p>
+      <div class="divider"></div>
 
-        <!-- Bottom row with corners and QR -->
-        <tr>
-          <td class="corner corner-bl"></td>
-          <td colspan="3" style="text-align: right; vertical-align: bottom; padding-right: 15px; padding-bottom: 8px;">
-            <img
-              src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18172619/scan-qr-code.webp"
-              alt="QR" class="qr-img">
-          </td>
-          <td class="corner corner-br"></td>
-        </tr>
-      </table>
+      <div class="name-row">
+        <h2 class="recipient-name">{{STUDENT_NAME}}</h2>
+      </div>
+
+      <div class="divider"></div>
+
+      <p class="description">
+        has actively participated in the <strong>{{EVENT_NAME}}</strong> themed "<strong>{{EVENT_THEME}}</strong>" held
+        on <strong>{{EVENT_DATE}}</strong>, at the <strong>{{INSTITUTION_NAME}}</strong>. This certificate is awarded in
+        recognition of the participant's commitment to learning about Artificial Intelligence, digital skills,
+        innovation, and emerging opportunities shaping the future of work and technology.
+      </p>
+
+      <div class="signature-section">
+        <div class="signature-box">
+          <img src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163117/signature.webp"
+            alt="Signature" class="signature-image">
+          <div class="signature-line"></div>
+          <span class="signature-label">Signature</span>
+        </div>
+
+        <div class="seal">
+          <img src="https://pub-f02915809d3846b8ab0aaedeab54dbf7.r2.dev/ofastshop/web/2025/12/18163132/Stamp.webp"
+            alt="Stamp">
+          <div class="cert-id">{{CERTIFICATE_ID}}</div>
+        </div>
+
+        <div class="signature-box">
+          <div style="height: 50px; display: flex; align-items: flex-end; margin-bottom: -5px;">
+            <span style="font-family: 'Montserrat', sans-serif; font-size: 14px; color: #1a1a2e;">{{ISSUE_DATE}}</span>
+          </div>
+          <div class="signature-line"></div>
+          <span class="signature-label">Date</span>
+        </div>
+      </div>
+
+      <div class="qr-section">
+        <img src="{{QR_CODE_PATH}}" alt="QR Code">
+      </div>
     </div>
   </div>
+
+  <button class="print-btn" onclick="window.print()">Print Certificate</button>
 </body>
 
 </html>

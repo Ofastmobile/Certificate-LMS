@@ -26,7 +26,7 @@ if ($delete_data === 'yes') {
     delete_option('ofst_cert_delete_on_uninstall');
 
     // Optional: Delete uploaded certificate files
-    // Uncomment if you want to delete uploaded PDFs
+    // Uncomment if you want to delete uploaded certificates
     // $upload_dir = wp_upload_dir();
     // $cert_dir = $upload_dir['basedir'] . '/certificates/';
     // if (is_dir($cert_dir)) {
