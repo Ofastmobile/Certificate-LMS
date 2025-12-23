@@ -167,38 +167,55 @@ function ofst_cert_save_html_certificate($html, $certificate_id, $template_type)
 
 /**
  * Generate QR code for certificate verification
- * Uses the phpqrcode library already in the includes folder
+ * Uses phpqrcode library with robust fallbacks
  */
 function ofst_cert_generate_qr_code($url, $certificate_id)
 {
-    // Check if phpqrcode exists
-    $qr_lib = OFST_CERT_PLUGIN_DIR . 'includes/phpqrcode/qrlib.php';
-
-    if (!file_exists($qr_lib)) {
-        // Return a placeholder if QR library not found
-        return 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode($url);
-    }
-
-    require_once $qr_lib;
-
-    // Create QR code directory
     $upload_dir = wp_upload_dir();
     $qr_dir = $upload_dir['basedir'] . '/certificates/qr/';
 
+    // Create QR code directory
     if (!file_exists($qr_dir)) {
         wp_mkdir_p($qr_dir);
     }
 
-    // Generate QR code file
     $qr_filename = 'qr_' . $certificate_id . '.png';
     $qr_path = $qr_dir . $qr_filename;
 
-    // Only generate if doesn't exist
-    if (!file_exists($qr_path)) {
-        QRcode::png($url, $qr_path, QR_ECLEVEL_M, 4);
+    // If QR code already exists, return it
+    if (file_exists($qr_path)) {
+        return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
     }
 
-    return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
+    // Try phpqrcode library first
+    $qr_lib = OFST_CERT_PLUGIN_DIR . 'includes/phpqrcode/qrlib.php';
+
+    if (file_exists($qr_lib)) {
+        try {
+            require_once $qr_lib;
+            QRcode::png($url, $qr_path, QR_ECLEVEL_M, 4);
+
+            if (file_exists($qr_path)) {
+                return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
+            }
+        } catch (Exception $e) {
+            error_log('QR generation with phpqrcode failed: ' . $e->getMessage());
+        }
+    }
+
+    // Fallback 1: Use qrserver.com API
+    $api_url = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . urlencode($url);
+    $response = wp_remote_get($api_url, ['timeout' => 15]);
+
+    if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+        $image_data = wp_remote_retrieve_body($response);
+        if ($image_data && file_put_contents($qr_path, $image_data)) {
+            return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
+        }
+    }
+
+    // Fallback 2: Return external URL directly (no caching)
+    return 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' . urlencode($url);
 }
 
 /**

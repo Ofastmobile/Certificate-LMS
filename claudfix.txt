@@ -1,0 +1,1163 @@
+Comprehensive Analysis of Your Certificate Management System
+I'll analyze this systematically across architecture, security, functionality, and improvement opportunities.
+
+🎯 Overall Assessment
+Strengths:
+
+Well-structured modular architecture
+Comprehensive dual-template system (Ofastshop + Cromemart)
+Strong security foundations (Turnstile, nonces, escaping)
+Thoughtful admin workflow with approval mechanisms
+Modern, responsive UI design
+
+Critical Areas Needing Attention:
+
+Certificate generation reliability issues
+Potential race conditions in counter generation
+Missing error recovery mechanisms
+QR code generation fallback concerns
+
+
+🏗️ Architecture & Code Organization
+What You Did Right:
+✅ Clean separation of concerns (admin, frontend, emails, generation)
+✅ Database-first approach with proper migrations
+✅ Template-based certificate generation
+✅ Shortcode-based frontend integration
+Structural Concerns:
+1. Certificate ID Generation - Race Condition Risk
+php// Current implementation in ofst_cert_generate_id()
+$counter = (int) ofst_cert_get_setting('cert_counter', 1);
+$cert_id = $prefix . $year . str_pad($counter, 3, '0', STR_PAD_LEFT);
+ofst_cert_update_setting('cert_counter', $counter + 1);
+Problem: If two requests process simultaneously, they could get the same counter value before either increments it.
+Solution:
+phpfunction ofst_cert_generate_id() {
+    global $wpdb;
+    $settings_table = $wpdb->prefix . 'ofst_cert_settings';
+    
+    // Use atomic UPDATE...WHERE to prevent race conditions
+    $updated = $wpdb->query($wpdb->prepare(
+        "UPDATE $settings_table 
+         SET setting_value = setting_value + 1 
+         WHERE setting_key = 'cert_counter' 
+         AND setting_value = %d",
+        $wpdb->get_var("SELECT setting_value FROM $settings_table WHERE setting_key = 'cert_counter'")
+    ));
+    
+    if (!$updated) {
+        // Retry logic or lock mechanism
+        return ofst_cert_generate_id_with_lock();
+    }
+    
+    $counter = (int) $wpdb->get_var("SELECT setting_value FROM $settings_table WHERE setting_key = 'cert_counter'");
+    $prefix = ofst_cert_get_setting('cert_prefix', 'OFSHDG');
+    $year = date('Y');
+    
+    return $prefix . $year . str_pad($counter, 3, '0', STR_PAD_LEFT);
+}
+
+🔒 Security Analysis
+Strong Points:
+php✅ Nonce verification on all forms
+✅ Capability checks (manage_options, vendor roles)
+✅ SQL prepared statements throughout
+✅ Output escaping (esc_html, esc_attr, esc_url)
+✅ Cloudflare Turnstile integration
+✅ Input sanitization (sanitize_text_field, sanitize_email)
+Vulnerabilities to Address:
+1. Missing Rate Limiting Implementation
+php// You created the table but never use it
+$sql_rate_limits = "CREATE TABLE IF NOT EXISTS {$prefix}cert_rate_limits...";
+Implement:
+phpfunction ofst_cert_check_rate_limit($identifier, $action_type, $max_attempts = 5, $timeframe_minutes = 60) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_rate_limits';
+    
+    $cutoff_time = date('Y-m-d H:i:s', strtotime("-$timeframe_minutes minutes"));
+    
+    // Clean old entries
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM $table WHERE last_attempt < %s",
+        $cutoff_time
+    ));
+    
+    // Check current attempts
+    $record = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE identifier = %s AND action_type = %s",
+        $identifier, $action_type
+    ));
+    
+    if ($record && $record->attempt_count >= $max_attempts) {
+        return [
+            'allowed' => false,
+            'retry_after' => strtotime($record->first_attempt) + ($timeframe_minutes * 60) - time()
+        ];
+    }
+    
+    // Update or insert
+    if ($record) {
+        $wpdb->update($table, [
+            'attempt_count' => $record->attempt_count + 1,
+            'last_attempt' => current_time('mysql')
+        ], ['id' => $record->id]);
+    } else {
+        $wpdb->insert($table, [
+            'identifier' => $identifier,
+            'action_type' => $action_type,
+            'attempt_count' => 1,
+            'first_attempt' => current_time('mysql'),
+            'last_attempt' => current_time('mysql')
+        ]);
+    }
+    
+    return ['allowed' => true];
+}
+
+// Use in form processing
+$ip = $_SERVER['REMOTE_ADDR'];
+$rate_check = ofst_cert_check_rate_limit($ip, 'student_request', 5, 60);
+if (!$rate_check['allowed']) {
+    wp_die('Too many requests. Try again in ' . ceil($rate_check['retry_after'] / 60) . ' minutes.');
+}
+2. File Upload Security Gap
+php// In certificate-generator.php - no validation of template files
+$html = file_get_contents($template_file);
+Add Validation:
+phpfunction ofst_cert_load_template($template_type, $request) {
+    $template_dir = OFST_CERT_PLUGIN_DIR . 'certficate-template-code/';
+    
+    // Whitelist allowed templates
+    $allowed_templates = [
+        'ofastshop' => 'ofastshop-certificate.html',
+        'cromemart' => 'cromemart-cert.html'
+    ];
+    
+    if (!isset($allowed_templates[$template_type])) {
+        error_log('Invalid template type: ' . $template_type);
+        return false;
+    }
+    
+    $template_file = $template_dir . $allowed_templates[$template_type];
+    
+    // Verify file exists and is within plugin directory
+    $real_path = realpath($template_file);
+    $real_dir = realpath($template_dir);
+    
+    if (!$real_path || strpos($real_path, $real_dir) !== 0) {
+        error_log('Template file path validation failed');
+        return false;
+    }
+    
+    // Continue with loading...
+}
+
+🐛 Critical Bugs & Edge Cases
+1. Certificate Generation Failure Handling
+php// In admin-dashboard.php - incomplete error handling
+$gen_result = ofst_cert_generate_certificate($request_id);
+if (!$gen_result['success']) {
+    ofst_cert_log_generation_failure($request_id, $gen_result['error']);
+    return ['success' => false, 'error' => '...'];
+}
+Missing Functions:
+phpfunction ofst_cert_log_generation_failure($request_id, $error) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    
+    $wpdb->update($table, [
+        'status' => 'generation_failed',
+        'rejection_reason' => 'Generation Error: ' . $error,
+        'processed_date' => current_time('mysql')
+    ], ['id' => $request_id]);
+    
+    // Log to WordPress debug log
+    error_log("Certificate generation failed for request $request_id: $error");
+}
+
+function ofst_cert_log_email_failure($request_id, $error) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    
+    $wpdb->update($table, [
+        'status' => 'email_failed',
+        'rejection_reason' => 'Email Error: ' . $error
+    ], ['id' => $request_id]);
+}
+
+function ofst_cert_retry_generation($request_id, $completion_date) {
+    // Reset status and retry
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    
+    $wpdb->update($table, [
+        'status' => 'pending',
+        'rejection_reason' => null,
+        'completion_date' => $completion_date
+    ], ['id' => $request_id]);
+    
+    return ofst_cert_approve_request($request_id, $completion_date);
+}
+
+function ofst_cert_retry_email($request_id) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    
+    $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
+    
+    if (!$request || empty($request->certificate_file)) {
+        return ['success' => false, 'error' => 'Certificate file not found'];
+    }
+    
+    $email_sent = ofst_cert_send_certificate_email($request);
+    
+    if ($email_sent) {
+        $wpdb->update($table, [
+            'status' => 'issued',
+            'rejection_reason' => null
+        ], ['id' => $request_id]);
+        
+        return ['success' => true];
+    }
+    
+    return ['success' => false, 'error' => 'Email sending failed'];
+}
+2. QR Code Generation Reliability
+php// Current fallback in qrlib.php uses Google Charts API
+$google_url = 'https://chart.googleapis.com/chart?...';
+Problem: Google Charts API for QR codes was deprecated years ago. This will fail.
+Robust Solution:
+phpfunction ofst_cert_generate_qr_code($url, $certificate_id) {
+    $upload_dir = wp_upload_dir();
+    $qr_dir = $upload_dir['basedir'] . '/certificates/qr/';
+    
+    if (!file_exists($qr_dir)) {
+        wp_mkdir_p($qr_dir);
+    }
+    
+    $qr_filename = 'qr_' . $certificate_id . '.png';
+    $qr_path = $qr_dir . $qr_filename;
+    
+    // Try library generation first
+    $qr_lib = OFST_CERT_PLUGIN_DIR . 'includes/phpqrcode/qrlib.php';
+    if (file_exists($qr_lib)) {
+        require_once $qr_lib;
+        try {
+            QRcode::png($url, $qr_path, QR_ECLEVEL_M, 4);
+            if (file_exists($qr_path)) {
+                return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
+            }
+        } catch (Exception $e) {
+            error_log('QR generation failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Fallback 1: API service (qrcode-monkey or similar)
+    $api_url = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . urlencode($url);
+    $response = wp_remote_get($api_url, ['timeout' => 15]);
+    
+    if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+        $image_data = wp_remote_retrieve_body($response);
+        file_put_contents($qr_path, $image_data);
+        return $upload_dir['baseurl'] . '/certificates/qr/' . $qr_filename;
+    }
+    
+    // Fallback 2: Text-based placeholder
+    return ofst_cert_create_qr_placeholder($url, $qr_path, $upload_dir);
+}
+
+function ofst_cert_create_qr_placeholder($url, $qr_path, $upload_dir) {
+    if (!extension_loaded('gd')) {
+        // Ultimate fallback: return a data URI
+        return 'data:image/svg+xml;base64,' . base64_encode('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#f0f0f0" width="100" height="100"/><text x="50" y="50" text-anchor="middle" font-size="10">QR Code</text></svg>');
+    }
+    
+    $img = imagecreatetruecolor(150, 150);
+    $white = imagecolorallocate($img, 255, 255, 255);
+    $black = imagecolorallocate($img, 0, 0, 0);
+    $gray = imagecolorallocate($img, 200, 200, 200);
+    
+    imagefill($img, 0, 0, $white);
+    imagerectangle($img, 10, 10, 140, 140, $black);
+    imagestring($img, 3, 40, 70, 'SCAN ME', $black);
+    
+    imagepng($img, $qr_path);
+    imagedestroy($img);
+    
+    return $upload_dir['baseurl'] . '/certificates/qr/' . basename($qr_path);
+}
+
+🎨 Frontend & UX Issues
+1. Form Validation - Blocking Submission
+javascript// In shortcodes.php - validation prevents submission even when valid
+function validateForm() {
+    if (templateType === 'ofastshop') {
+        if (!productSelect || !productSelect.value) {
+            submitBtn.disabled = true;
+            // ...
+        }
+    }
+}
+Problem: If user has NO eligible products, form is permanently disabled with no clear messaging.
+Fix:
+php// In shortcode output
+<?php if (empty($all_products)): ?>
+    <div class="ofst-cert-notice info" style="margin: 20px 0; padding: 16px; background: #e3f2fd; border-left: 4px solid #2196f3;">
+        <h4 style="margin: 0 0 8px 0;">No Courses Available</h4>
+        <p style="margin: 0;">You haven't purchased any courses yet, or your recent purchases haven't met the <?php echo $min_days; ?>-day waiting period.</p>
+        <p style="margin: 8px 0 0 0;">
+            <a href="<?php echo esc_url(wc_get_page_permalink('shop')); ?>" class="ofst-btn ofst-btn-primary" style="display: inline-block; margin-top: 8px;">
+                Browse Courses
+            </a>
+        </p>
+    </div>
+    <script>
+        // Hide the form entirely if no products
+        document.querySelector('.ofst-cert-form').style.display = 'none';
+    </script>
+<?php else: ?>
+    <!-- Show form -->
+<?php endif; ?>
+2. Template Selection - Accessibility
+html<!-- Current: Only visual feedback -->
+<div class="ofst-template-card active" data-template="ofastshop">
+Add ARIA attributes:
+html<div class="ofst-template-card active" 
+     data-template="ofastshop"
+     role="radio"
+     aria-checked="true"
+     tabindex="0"
+     onclick="selectTemplate(this, 'ofastshop')"
+     onkeypress="if(event.key==='Enter') selectTemplate(this, 'ofastshop')">
+javascriptfunction selectTemplate(card, template) {
+    // Update ARIA states
+    document.querySelectorAll('.ofst-template-card').forEach(c => {
+        c.setAttribute('aria-checked', 'false');
+        c.setAttribute('tabindex', '-1');
+    });
+    
+    card.setAttribute('aria-checked', 'true');
+    card.setAttribute('tabindex', '0');
+    card.focus();
+    
+    // Rest of your logic...
+}
+
+📧 Email System Concerns
+1. Attachment Handling - File Type Restriction
+php// In email-templates.php
+$ext = pathinfo($local_path, PATHINFO_EXTENSION);
+if (file_exists($local_path) && strtolower($ext) !== 'html') {
+    $attachments[] = $local_path;
+}
+Problem: HTML certificates are never attached, only linked. Users expect attachments.
+Solution - 
+
+
+// Update email function
+$attachments = array();
+if (!empty($request->certificate_file)) {
+    $upload_dir = wp_upload_dir();
+    $local_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $request->certificate_file);
+    
+    if (pathinfo($local_path, PATHINFO_EXTENSION) === 'html') {
+        $pdf_path = ofst_cert_convert_html_to_pdf_attachment($local_path, $request->certificate_id);
+        if (file_exists($pdf_path)) {
+            $attachments[] = $pdf_path;
+        }
+    } elseif (file_exists($local_path)) {
+        $attachments[] = $local_path;
+    }
+}
+2. Email Failure Recovery - No Retry Mechanism
+php$email_sent = ofst_cert_send_certificate_email($request);
+if (!$email_sent) {
+    ofst_cert_log_email_failure($request_id, 'Email sending failed');
+    // But how does admin retry?
+}
+Add WP-Cron Retry System:
+phpfunction ofst_cert_schedule_email_retry($request_id, $attempt = 1) {
+    if ($attempt > 3) {
+        // Give up after 3 attempts
+        ofst_cert_log_email_failure($request_id, 'Max retry attempts reached');
+        return;
+    }
+    
+    wp_schedule_single_event(
+        time() + (60 * $attempt), // Exponential backoff: 1min, 2min, 3min
+        'ofst_cert_retry_email_hook',
+        [$request_id, $attempt]
+    );
+}
+
+add_action('ofst_cert_retry_email_hook', function($request_id, $attempt) {
+    $result = ofst_cert_retry_email($request_id);
+    
+    if (!$result['success']) {
+        ofst_cert_schedule_email_retry($request_id, $attempt + 1);
+    }
+}, 10, 2);
+
+// Register the cron hook
+add_action('init', function() {
+    if (!wp_next_scheduled('ofst_cert_retry_email_hook')) {
+        // Cron hook registered
+    }
+});
+
+🗄️ Database Optimization
+Missing Indexes for Performance
+sql-- Add these indexes for faster queries
+ALTER TABLE wp_ofst_cert_requests 
+ADD INDEX idx_user_status (user_id, status),
+ADD INDEX idx_template_status (template_type, status),
+ADD INDEX idx_processed_date (processed_date);
+
+ALTER TABLE wp_ofst_cert_verifications 
+ADD INDEX idx_ip_date (verified_by_ip, verified_date);
+Cleanup Old Data
+php// Add weekly cleanup task
+add_action('init', function() {
+    if (!wp_next_scheduled('ofst_cert_cleanup_old_logs')) {
+        wp_schedule_event(time(), 'weekly', 'ofst_cert_cleanup_old_logs');
+    }
+});
+
+add_action('ofst_cert_cleanup_old_logs', function() {
+    global $wpdb;
+    
+    // Delete verification logs older than 1 year
+    $wpdb->query("
+        DELETE FROM {$wpdb->prefix}ofst_cert_verifications 
+        WHERE verified_date < DATE_SUB(NOW(), INTERVAL 1 YEAR)
+    ");
+    
+    // Delete failed rate limit entries older than 7 days
+    $wpdb->query("
+        DELETE FROM {$wpdb->prefix}ofst_cert_rate_limits 
+        WHERE last_attempt < DATE_SUB(NOW(), INTERVAL 7 DAY)
+    ");
+});
+
+🚀 Performance Optimizations
+1. Certificate Generation - Caching
+phpfunction ofst_cert_get_cached_template($template_type) {
+    $cache_key = 'ofst_cert_template_' . $template_type;
+    $cached = wp_cache_get($cache_key);
+    
+    if ($cached !== false) {
+        return $cached;
+    }
+    
+    $template_dir = OFST_CERT_PLUGIN_DIR . 'certficate-template-code/';
+    $template_file = $template_dir . ($template_type === 'cromemart' ? 'cromemart-cert.html' : 'ofastshop-certificate.html');
+    
+    if (!file_exists($template_file)) {
+        return false;
+    }
+    
+    $html = file_get_contents($template_file);
+    wp_cache_set($cache_key, $html, '', HOUR_IN_SECONDS);
+    
+    return $html;
+}
+2. Product Query Optimization
+php// Cache user products for session
+function ofst_cert_get_user_products_cached($user_id) {
+    $transient_key = 'ofst_user_products_' . $user_id;
+    $cached = get_transient($transient_key);
+    
+    if ($cached !== false) {
+        return $cached;
+    }
+    
+    $products = ofst_cert_get_all_user_products($user_id);
+    set_transient($transient_key, $products, 15 * MINUTE_IN_SECONDS);
+    
+    return $products;
+}
+
+📱 Mobile Responsiveness Issues
+Certificate Display on Mobile
+css/* Add to styles.css */
+@media (max-width: 768px) {
+    .certificate {
+        width: 100% !important;
+        aspect-ratio: auto !important;
+        min-height: 100vh;
+    }
+    
+    .certificate-inner {
+        padding: 20px 15px !important;
+    }
+    
+    .title {
+        font-size: 28px !important;
+        letter-spacing: 6px !important;
+    }
+    
+    .recipient-name {
+        font-size: 24px !important;
+    }
+    
+    .signature-section {
+        flex-direction: column !important;
+        gap: 20px !important;
+    }
+    
+    .qr-section {
+        position: static !important;
+        margin-top: 20px !important;
+        text-align: center !important;
+    }
+}
+
+🎯 Feature Enhancements
+1. Bulk Certificate Generation
+php// In admin-dashboard.php
+if (isset($_POST['ofst_bulk_action']) && $_POST['ofst_bulk_action'] === 'approve') {
+    foreach ($cert_ids as $cert_id) {
+        // Run in background to avoid timeout
+        wp_schedule_single_event(time() + ($key * 5), 'ofst_cert_process_bulk', [$cert_id]);
+    }
+    
+    echo '<div class="notice notice-info"><p>Processing ' . count($cert_ids) . ' certificates in background...</p></div>';
+}
+
+add_action('ofst_cert_process_bulk', function($cert_id) {
+    ofst_cert_approve_request($cert_id);
+});
+2. Certificate Expiry (Optional Feature)
+php// Add to settings page
+<tr>
+    <th>Certificate Validity Period</th>
+    <td>
+        <input type="number" name="cert_validity_years" value="<?php echo esc_attr(ofst_cert_get_setting('cert_validity_years', '0')); ?>" min="0" max="10">
+        <p class="description">Years until certificate expires (0 = never expires)</p>
+    </td>
+</tr>
+
+// Check expiry in verification
+function ofst_cert_is_expired($cert) {
+    $validity_years = (int) ofst_cert_get_setting('cert_validity_years', 0);
+    
+    if ($validity_years === 0) {
+        return false;
+    }
+    
+    $issued_date = strtotime($cert->processed_date);
+    $expiry_date = strtotime("+{$validity_years} years", $issued_date);
+    
+    return time() > $expiry_date;
+}
+
+🔍 Testing Recommendations
+Critical Test Cases:
+
+Concurrent Requests:
+
+php// Test script (run via WP-CLI or external)
+for ($i = 0; $i < 10; $i++) {
+    $pid = pcntl_fork();
+    if ($pid == 0) {
+        // Child process - submit certificate request
+        wp_remote_post(site_url('/student-request'), [...]);
+        exit;
+    }
+}
+// Check for duplicate certificate IDs
+
+Email Failure Scenarios:
+
+
+SMTP server down
+Invalid recipient email
+Attachment size limits
+Rate limiting by email provider
+
+
+Template Injection:
+
+php// Try injecting PHP/JS in form fields
+$malicious_name = '<?php system("whoami"); ?>';
+$malicious_name = '<script>alert("XSS")</script>';
+// Verify output is escaped
+
+File System Permissions:
+
+php// Test certificate generation when uploads directory is read-only
+chmod(wp_upload_dir()['basedir'] . '/certificates', 0444);
+// Should fail gracefully with clear error
+
+📋 Immediate Action Items (Priority Order)
+🔴 Critical (Fix Now):
+
+✅ Implement race condition protection for certificate ID generation
+✅ Add ofst_cert_log_generation_failure() and retry functions
+✅ Fix QR code generation fallback (deprecated Google API)
+✅ Add rate limiting to form submissions
+
+🟡 High Priority (This Week):
+
+✅ Add database indexes for performance
+✅ Implement email retry with WP-Cron
+✅ Add file path validation to template loading
+✅ Create bulk certificate processing
+✅ Add cleanup cron for old logs
+
+🟢 Medium Priority (This Month):
+
+✅ Convert HTML certificates to PDF for email attachments
+✅ Add certificate caching
+✅ Improve mobile certificate display
+✅ Add accessibility attributes to template selector
+✅ Implement product query caching
+
+🔵 Low Priority (Future):
+
+✅ Certificate expiry feature (optional)
+✅ Analytics dashboard for certificate stats
+✅ Certificate revocation system
+✅ Multi-language support
+
+
+💡 Final Thoughts
+Your plugin has a solid foundation. The architecture is well-thought-out, security practices are mostly sound, and the dual-template system is elegant. However, the critical issues around certificate ID generation, QR code reliability, and error recovery need immediate attention before production use.
+The fact that you've already planned for rate limiting (table exists) and error handling (status fields) shows good foresight—you just need to implement the logic that uses these structures.
+
+
+Security Measures for HTML Certificates
+Since you're keeping HTML, implement these protections:
+
+1. Time-Limited Access Tokens
+
+php
+// In certificate-generator.php
+function ofst_cert_save_html_certificate($html, $certificate_id, $template_type) {
+    $upload_dir = wp_upload_dir();
+    $cert_dir = $upload_dir['basedir'] . '/certificates/';
+    
+    if (!file_exists($cert_dir)) {
+        wp_mkdir_p($cert_dir);
+        // Add .htaccess protection
+        file_put_contents($cert_dir . '.htaccess', "
+# Ofastshop Certificate Protection
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{QUERY_STRING} !token=
+    RewriteRule ^.*$ - [F,L]
+</IfModule>
+        ");
+    }
+    
+    $hash = md5($certificate_id . time() . wp_rand());
+    $filename = $template_type . '_' . $certificate_id . '_' . substr($hash, 0, 8) . '.html';
+    $file_path = $cert_dir . $filename;
+    
+    file_put_contents($file_path, $html);
+    
+    return [
+        'success' => true,
+        'file_path' => $file_path,
+        'file_url' => ofst_cert_generate_secure_url($filename, $certificate_id),
+        'filename' => $filename
+    ];
+}
+
+function ofst_cert_generate_secure_url($filename, $cert_id) {
+    // Generate time-limited token
+    $token = wp_hash($filename . $cert_id . time(), 'nonce');
+    $expiry = time() + (7 * DAY_IN_SECONDS); // 7 days
+    
+    // Store token in database
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    $wpdb->update($table, [
+        'access_token' => $token,
+        'token_expiry' => date('Y-m-d H:i:s', $expiry)
+    ], ['certificate_id' => $cert_id]);
+    
+    return add_query_arg([
+        'cert_file' => $filename,
+        'token' => $token
+    ], site_url('/view-certificate/'));
+}
+2. Secure Certificate Viewer Endpoint
+
+php
+// Add to includes/shortcodes.php
+add_action('init', 'ofst_cert_handle_secure_view');
+function ofst_cert_handle_secure_view() {
+    if (!isset($_GET['cert_file']) || !isset($_GET['token'])) {
+        return;
+    }
+    
+    $filename = sanitize_file_name($_GET['cert_file']);
+    $token = sanitize_text_field($_GET['token']);
+    
+    // Validate token
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    $cert = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE access_token = %s AND token_expiry > NOW()",
+        $token
+    ));
+    
+    if (!$cert) {
+        wp_die('Invalid or expired certificate link. Please contact support.');
+    }
+    
+    // Check if user owns this certificate
+    $user_id = get_current_user_id();
+    if ($user_id != $cert->user_id && !current_user_can('manage_options')) {
+        wp_die('You do not have permission to view this certificate.');
+    }
+    
+    // Serve the file
+    $upload_dir = wp_upload_dir();
+    $file_path = $upload_dir['basedir'] . '/certificates/' . $filename;
+    
+    if (!file_exists($file_path)) {
+        wp_die('Certificate file not found.');
+    }
+    
+    // Log access
+    ofst_cert_log_verification($cert->certificate_id, 'direct_access', $_SERVER['REMOTE_ADDR'], 'accessed');
+    
+    header('Content-Type: text/html; charset=UTF-8');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('X-Content-Type-Options: nosniff');
+    readfile($file_path);
+    exit;
+}
+3. Add Database Column for Token
+
+php
+// Add to migration function
+function ofst_cert_add_security_columns() {
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'access_token'");
+    if (empty($columns)) {
+        $wpdb->query("ALTER TABLE $table ADD COLUMN access_token varchar(255) DEFAULT NULL AFTER certificate_file");
+        $wpdb->query("ALTER TABLE $table ADD COLUMN token_expiry datetime DEFAULT NULL AFTER access_token");
+        $wpdb->query("ALTER TABLE $table ADD INDEX idx_token (access_token)");
+    }
+}
+// Call this in plugin activation
+4. Admin Control - Regenerate Link
+
+php
+// Add button in admin dashboard
+if ($cert->status === 'issued' && !empty($cert->certificate_file)) {
+    echo '<a href="#" onclick="regenerateCertLink(' . $cert->id . ')" class="button button-small">🔄 Regenerate Link</a>';
+}
+?>
+
+<script>
+function regenerateCertLink(certId) {
+    if (!confirm('Regenerate certificate access link? Old link will be invalidated.')) {
+        return;
+    }
+    
+    jQuery.post(ajaxurl, {
+        action: 'ofst_regenerate_cert_link',
+        cert_id: certId,
+        nonce: '<?php echo wp_create_nonce('ofst_regen_link'); ?>'
+    }, function(response) {
+        if (response.success) {
+            alert('New link generated! Expires: ' + response.data.expiry);
+            location.reload();
+        } else {
+            alert('Error: ' + response.data.message);
+        }
+    });
+}
+</script>
+
+<?php
+// AJAX handler
+add_action('wp_ajax_ofst_regenerate_cert_link', function() {
+    check_ajax_referer('ofst_regen_link', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'Permission denied']);
+    }
+    
+    $cert_id = absint($_POST['cert_id']);
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    $cert = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $cert_id));
+    
+    if (!$cert || empty($cert->certificate_file)) {
+        wp_send_json_error(['message' => 'Certificate not found']);
+    }
+    
+    // Generate new token
+    $filename = basename($cert->certificate_file);
+    $new_url = ofst_cert_generate_secure_url($filename, $cert->certificate_id);
+    
+    // Update database
+    $wpdb->update($table, ['certificate_file' => $new_url], ['id' => $cert_id]);
+    
+    wp_send_json_success([
+        'url' => $new_url,
+        'expiry' => date('M d, Y', strtotime('+7 days'))
+    ]);
+});
+
+
+Implementation Steps:
+
+Update both certificate templates (ofastshop & cromemart):
+
+Add flex spacers between sections
+Add the print-specific CSS
+
+
+Add security columns to database:
+
+php   ofst_cert_add_security_columns();
+
+Update certificate generation to use secure URLs
+Add the secure viewer endpoint
+
+Replace your entire @media print section with this:
+css@media print {
+    @page {
+        size: A4 landscape;
+        margin: 0;
+    }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    html, body {
+        width: 297mm;
+        height: 210mm;
+        margin: 0;
+        padding: 0;
+        background: white !important;
+    }
+
+    body {
+        display: block;
+        min-height: auto;
+        padding: 0;
+    }
+
+    /* ===== MAIN FIX: SCALE & CENTER ===== */
+    .certificate {
+        width: 297mm !important;
+        height: 210mm !important;
+        max-width: none !important;
+        aspect-ratio: auto !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 20px !important; /* Slight padding for safety */
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+        /* Remove any transforms that might shrink it */
+        transform: none !important;
+        zoom: 1 !important;
+    }
+
+    .certificate-inner {
+        width: 100% !important;
+        height: 100% !important;
+        padding: 40px 60px !important; /* Restore original padding */
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important; /* ← KEY: Vertical centering */
+        box-sizing: border-box !important;
+    }
+
+    /* Preserve corner decorations with exact colors */
+    .corner::before {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    /* ===== FONT SIZE FIXES (INCREASE FOR PDF) ===== */
+    
+    .logo {
+        width: 300px !important; /* Slightly larger */
+        height: auto !important;
+        margin-bottom: 8px !important;
+        flex-shrink: 0 !important;
+    }
+
+    .title {
+        font-size: 48px !important; /* Was 42px - increased */
+        font-weight: 700 !important;
+        letter-spacing: 14px !important; /* Was 12px */
+        line-height: 1.1 !important;
+        margin: 0 !important;
+        flex-shrink: 0 !important;
+    }
+
+    .subtitle {
+        font-size: 18px !important; /* Was 16px - increased */
+        letter-spacing: 7px !important; /* Was 6px */
+        margin: 6px 0 25px 0 !important;
+        line-height: 1.2 !important;
+        flex-shrink: 0 !important;
+    }
+
+    .presented-text {
+        font-size: 13px !important; /* Was 12px - increased */
+        letter-spacing: 3.5px !important; /* Was 3px */
+        margin: 25px 0 10px 0 !important;
+        line-height: 1.2 !important;
+        flex-shrink: 0 !important;
+    }
+
+    .divider {
+        width: 220px !important; /* Was 200px - wider */
+        height: 2px !important;
+        margin: 12px auto !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* ===== NAME SECTION - LARGER & CENTERED ===== */
+    .name-row {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 15px 0 !important;
+        padding: 15px 0 !important;
+        width: 100% !important;
+        flex-shrink: 0 !important;
+    }
+
+    .recipient-name {
+        font-size: 46px !important; /* Was 40px - INCREASED */
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.15 !important;
+        font-family: 'Great Vibes', cursive !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* ===== DESCRIPTION - LARGER TEXT ===== */
+    .description {
+        font-size: 12px !important; /* Was 11px - increased */
+        font-style: italic !important;
+        line-height: 1.9 !important; /* Was 1.8 - more breathing room */
+        margin: 12px auto !important;
+        max-width: 550px !important; /* Was 500px - wider */
+        text-align: center !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* ===== SIGNATURE SECTION - STAYS AT BOTTOM ===== */
+    .signature-section {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: flex-end !important;
+        width: 100% !important;
+        margin-top: auto !important; /* Pushes to bottom */
+        padding: 0 50px !important; /* Was 40px */
+        flex-shrink: 0 !important;
+    }
+
+    .signature-box {
+        text-align: center !important;
+        min-width: 160px !important; /* Was 150px */
+        flex-shrink: 0 !important;
+    }
+
+    .signature-image {
+        width: 130px !important; /* Was 120px */
+        height: 55px !important; /* Was 50px */
+        object-fit: contain !important;
+        margin-bottom: -5px !important;
+    }
+
+    .signature-line {
+        width: 160px !important; /* Was 150px */
+        height: 1px !important;
+        margin-bottom: 8px !important;
+    }
+
+    .signature-label {
+        font-size: 12px !important; /* Was 11px */
+        font-weight: 600 !important;
+        letter-spacing: 2.5px !important; /* Was 2px */
+    }
+
+    /* ===== SEAL - LARGER ===== */
+    .seal {
+        flex-shrink: 0 !important;
+    }
+
+    .seal img {
+        width: 90px !important; /* Was 80px - LARGER */
+        height: 90px !important;
+        object-fit: contain !important;
+    }
+
+    .cert-id {
+        font-size: 11px !important; /* Was 10px */
+        font-weight: 700 !important;
+        letter-spacing: 1.2px !important;
+        margin-top: 5px !important;
+    }
+
+    /* ===== QR CODE - LARGER ===== */
+    .qr-section {
+        position: absolute !important;
+        right: 45px !important; /* Was 40px */
+        bottom: 25px !important; /* Was 20px */
+    }
+
+    .qr-section img {
+        width: 70px !important; /* Was 60px - LARGER */
+        height: 70px !important;
+        object-fit: contain !important;
+        border-radius: 8px !important;
+    }
+
+    /* Hide print button */
+    .print-btn {
+        display: none !important;
+    }
+
+    /* Prevent any unwanted page breaks */
+    * {
+        page-break-inside: avoid !important;
+    }
+
+    .certificate-inner > * {
+        page-break-inside: avoid !important;
+    }
+}
+
+🎯 Key Changes Explained
+1. Vertical Centering Fix
+css.certificate-inner {
+    justify-content: center !important; /* ← This centers everything vertically */
+}
+```
+
+### **2. Font Size Increases**
+| Element | Old Size | New Size | Increase |
+|---------|----------|----------|----------|
+| Title | 42px | 48px | +14% |
+| Subtitle | 16px | 18px | +12.5% |
+| Name | 40px | 46px | +15% |
+| Description | 11px | 12px | +9% |
+| Signature labels | 11px | 12px | +9% |
+| Seal | 80px | 90px | +12.5% |
+| QR Code | 60px | 70px | +16.7% |
+
+### **3. Why Fonts Shrink on PDF**
+Browsers apply **print scaling** by default. By explicitly setting larger font sizes with `!important`, we override this behavior.
+
+---
+
+## 📊 **Visual Comparison**
+
+### **BEFORE (Your Current Issue):**
+```
+┌─────────────────────────┐
+│                         │
+│      [Content]          │ ← Too small, pushed to top
+│      [Shrunken]         │
+│                         │
+│                         │
+│         [Empty]         │
+└─────────────────────────┘
+```
+
+### **AFTER (With Fix):**
+```
+┌─────────────────────────┐
+│                         │
+│                         │
+│      [Content]          │ ← Centered vertically
+│      [Larger]           │ ← Readable font sizes
+│      [Centered]         │
+│                         │
+└─────────────────────────┘
+
+🎨 For Ofastshop Template (Same Fix)
+Apply the same changes to your ofastshop-certificate.html. Here are the adjusted font sizes:
+css@media print {
+    /* ... same page setup ... */
+
+    .logo {
+        width: 320px !important; /* Ofastshop logo is wider */
+    }
+
+    .title {
+        font-size: 48px !important;
+        letter-spacing: 14px !important;
+    }
+
+    .subtitle {
+        font-size: 18px !important;
+        letter-spacing: 7px !important;
+    }
+
+    .recipient-name {
+        font-size: 35px !important; /* Ofastshop uses smaller cursive */
+    }
+
+    .course-name {
+        font-size: 20px !important; /* Course name more prominent */
+        letter-spacing: 2.5px !important;
+    }
+
+    .description {
+        font-size: 12px !important;
+        line-height: 1.9 !important;
+    }
+
+    .signature-name {
+        font-size: 13px !important; /* Instructor name */
+        letter-spacing: 2.5px !important;
+    }
+
+    /* All other properties same as Cromemart */
+}
+
+🧪 Testing Steps
+
+Replace your @media print section with the code above
+Open certificate in browser (should look same as before)
+Print to PDF (Ctrl+P → Save as PDF)
+Open the PDF - should now be:
+
+✅ Vertically centered
+✅ Larger, readable fonts
+✅ All elements proportionally scaled up
+
+
+
+
+🎛️ Fine-Tuning Options
+If fonts are STILL too small:
+Multiply all font sizes by 1.15:
+css.title { font-size: 55px !important; } /* 48 * 1.15 */
+.recipient-name { font-size: 53px !important; } /* 46 * 1.15 */
+.description { font-size: 14px !important; } /* 12 * 1.15 */
+If fonts are TOO large:
+Multiply all font sizes by 0.9:
+css.title { font-size: 43px !important; } /* 48 * 0.9 */
+.recipient-name { font-size: 41px !important; } /* 46 * 0.9 */
+If content is too high/low:
+css.certificate-inner {
+    justify-content: center !important; /* Center */
+    /* OR */
+    justify-content: flex-start !important; /* Top */
+    padding-top: 60px !important; /* Add top padding */
+}

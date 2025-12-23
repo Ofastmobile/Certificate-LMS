@@ -381,6 +381,13 @@ function ofst_cert_process_student_request()
 
     $user_id = get_current_user_id();
 
+    // Rate limiting check
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $rate_check = ofst_cert_check_rate_limit($ip, 'student_request', 5, 60);
+    if (!$rate_check['allowed']) {
+        wp_die($rate_check['message']);
+    }
+
     // Verify Turnstile
     $turnstile_token = isset($_POST['cf-turnstile-response']) ? $_POST['cf-turnstile-response'] : '';
     if (!empty(ofst_cert_get_setting('turnstile_secret_key')) && !ofst_cert_verify_turnstile($turnstile_token)) {
@@ -569,263 +576,14 @@ function ofst_cert_display_messages()
     }
 }
 
+
 /**
  * =====================================================
- * VENDOR REQUEST FORM SHORTCODE  
- * Shortcode: [cert_vendor_request]
+ * NOTE: Vendor Request Functionality Removed
+ * Students request certificates directly.
+ * Vendors receive email notification when certificate is issued.
  * =====================================================
  */
-function ofst_cert_vendor_request_form()
-{
-    if (!is_user_logged_in()) {
-        return '<div class="ofst-cert-notice error">Please log in to access this page.</div>';
-    }
-
-    $user = wp_get_current_user();
-    $is_vendor = in_array('seller', $user->roles) || in_array('vendor', $user->roles) || in_array('dokandar', $user->roles) || in_array('instructor', $user->roles);
-
-    if (!$is_vendor && !current_user_can('manage_options')) {
-        return '<div class="ofst-cert-notice error">Only vendors can access this page.</div>';
-    }
-
-    $vendor_id = get_current_user_id();
-    $products = ofst_cert_get_vendor_products($vendor_id);
-    $turnstile_site_key = ofst_cert_get_setting('turnstile_site_key');
-
-    ob_start();
-?>
-
-    <div class="ofst-cert-form-container">
-        <div class="ofst-cert-back-btn">
-            <a href="#" onclick="history.back(); return false;" class="ofst-btn-back">← Back to Dashboard</a>
-        </div>
-
-        <div class="ofst-cert-card">
-            <h2 class="ofst-cert-title">Request Student Certificate</h2>
-            <p class="ofst-cert-subtitle">Submit a certificate request for a student who has completed your course.</p>
-
-            <?php if (empty($products)): ?>
-                <div class="ofst-cert-notice info">
-                    <p>You don't have any published products yet.</p>
-                </div>
-            <?php else: ?>
-
-                <form id="ofst-vendor-cert-form" method="post" class="ofst-cert-form">
-                    <?php wp_nonce_field('ofst_vendor_cert_request', 'ofst_vendor_cert_nonce'); ?>
-
-                    <div class="ofst-form-row">
-                        <div class="ofst-form-group ofst-half">
-                            <label for="student_first_name">Student First Name <span class="required">*</span></label>
-                            <input type="text" id="student_first_name" name="student_first_name" required>
-                        </div>
-
-                        <div class="ofst-form-group ofst-half">
-                            <label for="student_last_name">Student Last Name <span class="required">*</span></label>
-                            <input type="text" id="student_last_name" name="student_last_name" required>
-                        </div>
-                    </div>
-
-                    <div class="ofst-form-row">
-                        <div class="ofst-form-group ofst-half">
-                            <label for="student_email">Student Email <span class="required">*</span></label>
-                            <input type="email" id="student_email" name="student_email" required>
-                            <small>Student must be registered on the website</small>
-                        </div>
-
-                        <div class="ofst-form-group ofst-half">
-                            <label for="student_phone">Student Phone <span class="required">*</span></label>
-                            <input type="tel" id="student_phone" name="student_phone" required>
-                        </div>
-                    </div>
-
-                    <div class="ofst-form-group">
-                        <label for="vendor_product_id">Course/Product <span class="required">*</span></label>
-                        <select id="vendor_product_id" name="vendor_product_id" required>
-                            <option value="">-- Select Course --</option>
-                            <?php foreach ($products as $id => $name): ?>
-                                <option value="<?php echo esc_attr($id); ?>"><?php echo esc_html($name); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="ofst-form-row">
-                        <div class="ofst-form-group ofst-half">
-                            <label for="instructor_name">Instructor Full Name <span class="required">*</span></label>
-                            <input type="text" id="instructor_name" name="instructor_name" value="<?php echo esc_attr($user->display_name); ?>" required>
-                            <small>Your name or the course instructor's name</small>
-                        </div>
-
-                        <div class="ofst-form-group ofst-half">
-                            <label for="completion_date">Completion Date <span class="required">*</span></label>
-                            <input type="date" id="completion_date" name="completion_date" max="<?php echo date('Y-m-d'); ?>" required>
-                        </div>
-                    </div>
-
-                    <div class="ofst-form-group">
-                        <label for="vendor_notes">Additional Notes (Optional)</label>
-                        <textarea id="vendor_notes" name="vendor_notes" rows="4" placeholder="Any additional information about the student's completion..."></textarea>
-                    </div>
-
-                    <?php if (!empty($turnstile_site_key)): ?>
-                        <div class="ofst-form-group">
-                            <div class="cf-turnstile" data-sitekey="<?php echo esc_attr($turnstile_site_key); ?>"></div>
-                        </div>
-                        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-                    <?php endif; ?>
-
-                    <div class="ofst-form-actions">
-                        <button type="submit" name="ofst_submit_vendor_request" class="ofst-btn ofst-btn-primary">
-                            <span class="btn-text">Submit Certificate Request</span>
-                            <span class="btn-loader" style="display:none;">Processing...</span>
-                        </button>
-                    </div>
-                </form>
-
-            <?php endif; ?>
-        </div>
-    </div>
-
-<?php
-    return ob_get_clean();
-}
-add_shortcode('cert_vendor_request', 'ofst_cert_vendor_request_form');
-
-// Process vendor request (implementation continues...)
-add_action('init', 'ofst_cert_process_vendor_request');
-function ofst_cert_process_vendor_request()
-{
-    if (!isset($_POST['ofst_submit_vendor_request'])) {
-        return;
-    }
-
-    // Verify nonce
-    if (
-        !isset($_POST['ofst_vendor_cert_nonce']) ||
-        !wp_verify_nonce($_POST['ofst_vendor_cert_nonce'], 'ofst_vendor_cert_request')
-    ) {
-        wp_die('Security check failed');
-    }
-
-    // Check user is vendor
-    if (!is_user_logged_in()) {
-        wp_die('You must be logged in');
-    }
-
-    $user = wp_get_current_user();
-    $is_vendor = in_array('seller', $user->roles) || in_array('vendor', $user->roles) || in_array('dokandar', $user->roles) || in_array('instructor', $user->roles);
-
-    if (!$is_vendor && !current_user_can('manage_options')) {
-        wp_die('Only vendors can submit certificate requests');
-    }
-
-    $vendor_id = get_current_user_id();
-
-    // Verify Turnstile
-    $turnstile_token = isset($_POST['cf-turnstile-response']) ? $_POST['cf-turnstile-response'] : '';
-    if (!empty(ofst_cert_get_setting('turnstile_secret_key')) && !ofst_cert_verify_turnstile($turnstile_token)) {
-        wp_die('Security verification failed. Please try again.');
-    }
-
-    // Sanitize inputs
-    $student_first = sanitize_text_field($_POST['student_first_name']);
-    $student_last = sanitize_text_field($_POST['student_last_name']);
-    $student_email = sanitize_email($_POST['student_email']);
-    $student_phone = ofst_cert_sanitize_phone($_POST['student_phone']);
-    $product_id = absint($_POST['vendor_product_id']);
-    $instructor_name = sanitize_text_field($_POST['instructor_name']);
-    $completion_date = sanitize_text_field($_POST['completion_date']);
-    $vendor_notes = !empty($_POST['vendor_notes']) ? sanitize_textarea_field($_POST['vendor_notes']) : null;
-
-    // Validation
-    if (
-        empty($student_first) || empty($student_last) || empty($student_email) ||
-        empty($student_phone) || empty($product_id) || empty($instructor_name) || empty($completion_date)
-    ) {
-        wp_die('All required fields must be filled');
-    }
-
-    if (!is_email($student_email)) {
-        wp_die('Invalid email address');
-    }
-
-    // Verify student exists
-    $student = get_user_by('email', $student_email);
-    if (!$student) {
-        wp_die('Student not found. Please ensure the student is registered on the website.');
-    }
-
-    $student_id = $student->ID;
-
-    // Verify product belongs to vendor
-    $product = wc_get_product($product_id);
-    if (!$product || $product->get_post_data()->post_author != $vendor_id) {
-        wp_die('Invalid product selection');
-    }
-
-    // Check for duplicate
-    $duplicate = ofst_cert_check_duplicate($student_id, $product_id);
-    if ($duplicate) {
-        wp_die('A certificate for this student and course already exists or is pending. Certificate ID: ' . $duplicate->certificate_id . '. Please contact ' . ofst_cert_get_setting('support_email') . ' for assistance.');
-    }
-
-    // Verify student purchased the product
-    $has_purchased = false;
-    $orders = wc_get_orders(array(
-        'customer_id' => $student_id,
-        'status' => array('wc-completed', 'wc-processing'),
-        'limit' => -1
-    ));
-
-    foreach ($orders as $order) {
-        foreach ($order->get_items() as $item) {
-            if ($item->get_product_id() == $product_id) {
-                $has_purchased = true;
-                break 2;
-            }
-        }
-    }
-
-    if (!$has_purchased) {
-        wp_die('This student has not purchased the selected course');
-    }
-
-    // Generate certificate ID
-    $cert_id = ofst_cert_generate_id();
-
-    // Insert into database
-    global $wpdb;
-    $table = $wpdb->prefix . 'ofst_cert_requests';
-
-    $inserted = $wpdb->insert($table, array(
-        'user_id' => $student_id,
-        'certificate_id' => $cert_id,
-        'request_type' => 'vendor',
-        'first_name' => $student_first,
-        'last_name' => $student_last,
-        'email' => $student_email,
-        'phone' => $student_phone,
-        'product_id' => $product_id,
-        'product_name' => $product->get_name(),
-        'instructor_name' => $instructor_name,
-        'vendor_id' => $vendor_id,
-        'vendor_notes' => $vendor_notes,
-        'completion_date' => $completion_date,
-        'status' => 'pending',
-        'requested_date' => current_time('mysql')
-    ));
-
-    if ($inserted) {
-        // Send notification to admin
-        ofst_cert_send_admin_notification($cert_id, 'vendor', $student_first . ' ' . $student_last, $product->get_name(), $user->display_name);
-
-        // Redirect with success
-        $redirect_url = add_query_arg('cert_success', 'vendor_request', wp_get_referer());
-        wp_redirect($redirect_url);
-        exit;
-    } else {
-        wp_die('Failed to submit request. Please try again.');
-    }
-}
 
 /**
  * =====================================================
@@ -880,6 +638,14 @@ function ofst_cert_process_verification()
     // Nonce verification
     if (!wp_verify_nonce($_POST['ofst_verify_nonce'], 'ofst_verify_cert')) {
         echo '<div class="ofst-cert-notice error">Security check failed</div>';
+        return;
+    }
+
+    // Rate limiting check
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $rate_check = ofst_cert_check_rate_limit($ip, 'verification', 20, 60);
+    if (!$rate_check['allowed']) {
+        echo '<div class="ofst-cert-notice error">' . esc_html($rate_check['message']) . '</div>';
         return;
     }
 

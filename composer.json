@@ -1,8 +1,0 @@
-{
-    "name": "ofastshop/lms-certificate",
-    "description": "LMS Certificate Management System with HTML Certificate Generation",
-    "require": {},
-    "config": {
-        "optimize-autoloader": true
-    }
-}

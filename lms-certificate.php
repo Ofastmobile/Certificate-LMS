@@ -221,7 +221,78 @@ register_deactivation_hook(__FILE__, 'ofst_cert_deactivate_plugin');
 
 function ofst_cert_deactivate_plugin()
 {
+    // Clear scheduled cron events
+    wp_clear_scheduled_hook('ofst_cert_daily_cleanup');
+    wp_clear_scheduled_hook('ofst_cert_hourly_email_retry');
     flush_rewrite_rules();
+}
+
+/**
+ * =====================================================
+ * WP-CRON JOBS FOR MAINTENANCE
+ * =====================================================
+ */
+
+// Schedule cron jobs on plugin activation
+function ofst_cert_schedule_cron_jobs()
+{
+    // Daily cleanup cron
+    if (!wp_next_scheduled('ofst_cert_daily_cleanup')) {
+        wp_schedule_event(time(), 'daily', 'ofst_cert_daily_cleanup');
+    }
+
+    // Hourly email retry cron
+    if (!wp_next_scheduled('ofst_cert_hourly_email_retry')) {
+        wp_schedule_event(time(), 'hourly', 'ofst_cert_hourly_email_retry');
+    }
+}
+add_action('init', 'ofst_cert_schedule_cron_jobs');
+
+// Daily cleanup: old rate limit entries and old verification logs
+add_action('ofst_cert_daily_cleanup', 'ofst_cert_run_daily_cleanup');
+function ofst_cert_run_daily_cleanup()
+{
+    global $wpdb;
+
+    // Delete rate limit entries older than 24 hours
+    $wpdb->query(
+        "DELETE FROM {$wpdb->prefix}ofst_cert_rate_limits 
+         WHERE last_attempt < DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+    );
+
+    // Delete verification logs older than 90 days (keep recent ones for audit)
+    $wpdb->query(
+        "DELETE FROM {$wpdb->prefix}ofst_cert_verifications 
+         WHERE verified_date < DATE_SUB(NOW(), INTERVAL 90 DAY)"
+    );
+
+    error_log('OFST Certificate: Daily cleanup completed');
+}
+
+// Hourly retry failed emails
+add_action('ofst_cert_hourly_email_retry', 'ofst_cert_run_email_retry');
+function ofst_cert_run_email_retry()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    // Get failed emails from last 24 hours (max 5 per run to prevent overload)
+    $failed = $wpdb->get_results(
+        "SELECT * FROM $table 
+         WHERE status = 'email_failed' 
+         AND processed_date > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+         ORDER BY processed_date DESC
+         LIMIT 5"
+    );
+
+    foreach ($failed as $request) {
+        $result = ofst_cert_retry_email($request->id);
+        if ($result['success']) {
+            error_log("OFST Certificate: Email retry succeeded for request {$request->id}");
+        }
+        // Wait 2 seconds between emails to avoid spam triggers
+        sleep(2);
+    }
 }
 
 // Show admin notice after activation
@@ -288,20 +359,200 @@ function ofst_cert_update_setting($key, $value)
     }
 }
 
-// Generate unique certificate ID
+// Generate unique certificate ID with race condition protection
 function ofst_cert_generate_id()
 {
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_settings';
     $prefix = ofst_cert_get_setting('cert_prefix', 'OFSHDG');
-    $counter = (int) ofst_cert_get_setting('cert_counter', 1);
     $year = date('Y');
 
-    // Format: OFSHDG2024001
-    $cert_id = $prefix . $year . str_pad($counter, 3, '0', STR_PAD_LEFT);
+    // Use atomic UPDATE to prevent race conditions
+    $current_counter = (int) $wpdb->get_var(
+        $wpdb->prepare("SELECT setting_value FROM $table WHERE setting_key = %s FOR UPDATE", 'cert_counter')
+    );
 
-    // Increment counter
-    ofst_cert_update_setting('cert_counter', $counter + 1);
+    if (!$current_counter) {
+        $current_counter = 1;
+    }
+
+    // Atomic increment
+    $updated = $wpdb->query(
+        $wpdb->prepare(
+            "UPDATE $table SET setting_value = setting_value + 1 WHERE setting_key = %s",
+            'cert_counter'
+        )
+    );
+
+    if (!$updated) {
+        // Fallback: insert if doesn't exist
+        $wpdb->insert($table, [
+            'setting_key' => 'cert_counter',
+            'setting_value' => 2
+        ]);
+        $current_counter = 1;
+    }
+
+    // Format: OFSHDG2024001
+    $cert_id = $prefix . $year . str_pad($current_counter, 3, '0', STR_PAD_LEFT);
+
+    // Verify uniqueness - regenerate if exists (very rare edge case)
+    $exists = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}ofst_cert_requests WHERE certificate_id = %s",
+            $cert_id
+        )
+    );
+
+    if ($exists) {
+        error_log("Certificate ID collision detected: $cert_id - regenerating");
+        return ofst_cert_generate_id(); // Recursive call to get next ID
+    }
 
     return $cert_id;
+}
+
+/**
+ * Check rate limiting for form submissions
+ * 
+ * @param string $identifier IP address or user ID
+ * @param string $action_type Type of action (student_request, vendor_request, verification)
+ * @param int $max_attempts Maximum attempts allowed
+ * @param int $timeframe_minutes Time window in minutes
+ * @return array ['allowed' => bool, 'retry_after' => seconds]
+ */
+function ofst_cert_check_rate_limit($identifier, $action_type, $max_attempts = 5, $timeframe_minutes = 60)
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_rate_limits';
+
+    $cutoff_time = date('Y-m-d H:i:s', strtotime("-$timeframe_minutes minutes"));
+
+    // Clean old entries
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM $table WHERE last_attempt < %s",
+        $cutoff_time
+    ));
+
+    // Check current attempts
+    $record = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE identifier = %s AND action_type = %s",
+        $identifier,
+        $action_type
+    ));
+
+    if ($record && $record->attempt_count >= $max_attempts) {
+        $first_attempt_time = strtotime($record->first_attempt);
+        $retry_after = ($first_attempt_time + ($timeframe_minutes * 60)) - time();
+        return [
+            'allowed' => false,
+            'retry_after' => max(0, $retry_after),
+            'message' => sprintf('Too many requests. Try again in %d minutes.', ceil($retry_after / 60))
+        ];
+    }
+
+    // Update or insert
+    if ($record) {
+        $wpdb->update($table, [
+            'attempt_count' => $record->attempt_count + 1,
+            'last_attempt' => current_time('mysql')
+        ], ['id' => $record->id]);
+    } else {
+        $wpdb->insert($table, [
+            'identifier' => $identifier,
+            'action_type' => $action_type,
+            'attempt_count' => 1,
+            'first_attempt' => current_time('mysql'),
+            'last_attempt' => current_time('mysql')
+        ]);
+    }
+
+    return ['allowed' => true];
+}
+
+/**
+ * Log certificate generation failure
+ */
+function ofst_cert_log_generation_failure($request_id, $error)
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    $wpdb->update($table, [
+        'status' => 'generation_failed',
+        'rejection_reason' => 'Generation Error: ' . sanitize_text_field($error),
+        'processed_date' => current_time('mysql')
+    ], ['id' => $request_id]);
+
+    error_log("Certificate generation failed for request $request_id: $error");
+}
+
+/**
+ * Log email sending failure
+ */
+function ofst_cert_log_email_failure($request_id, $error)
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    $wpdb->update($table, [
+        'status' => 'email_failed',
+        'rejection_reason' => 'Email Error: ' . sanitize_text_field($error)
+    ], ['id' => $request_id]);
+
+    error_log("Certificate email failed for request $request_id: $error");
+}
+
+/**
+ * Retry certificate generation
+ */
+function ofst_cert_retry_generation($request_id, $completion_date = null)
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    // Reset status
+    $update_data = [
+        'status' => 'pending',
+        'rejection_reason' => null
+    ];
+
+    if ($completion_date) {
+        $update_data['completion_date'] = $completion_date;
+    }
+
+    $wpdb->update($table, $update_data, ['id' => $request_id]);
+
+    // Retry approval
+    return ofst_cert_approve_request($request_id, $completion_date);
+}
+
+/**
+ * Retry email sending
+ */
+function ofst_cert_retry_email($request_id)
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
+
+    if (!$request || empty($request->certificate_file)) {
+        return ['success' => false, 'error' => 'Certificate file not found'];
+    }
+
+    $email_sent = ofst_cert_send_certificate_email($request);
+
+    if ($email_sent) {
+        $wpdb->update($table, [
+            'status' => 'issued',
+            'rejection_reason' => null
+        ], ['id' => $request_id]);
+
+        return ['success' => true];
+    }
+
+    return ['success' => false, 'error' => 'Email sending failed'];
 }
 
 /**
