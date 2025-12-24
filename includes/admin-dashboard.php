@@ -11,6 +11,187 @@ if (!defined('ABSPATH')) exit;
 require_once OFST_CERT_PLUGIN_DIR . 'includes/certificate-generator.php';
 
 /**
+ * Enqueue admin styles and toast notifications
+ */
+add_action('admin_enqueue_scripts', 'ofst_cert_admin_styles');
+function ofst_cert_admin_styles($hook)
+{
+    // Only on our plugin pages
+    if (strpos($hook, 'ofst-') === false && strpos($hook, 'certificates') === false) {
+        return;
+    }
+
+    // Add inline styles
+    $css = '
+    /* Responsive Tables */
+    .ofst-table-wrap {
+        overflow-x: auto;
+        margin: 0 0 20px 0;
+        -webkit-overflow-scrolling: touch;
+    }
+    .ofst-table-wrap table {
+        min-width: 600px;
+    }
+    
+    /* Toast Notifications */
+    .ofst-toast-container {
+        position: fixed;
+        top: 40px;
+        right: 20px;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .ofst-toast {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        animation: ofstSlideIn 0.3s ease-out;
+        max-width: 400px;
+        font-size: 14px;
+    }
+    .ofst-toast.success {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+    }
+    .ofst-toast.error {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+    }
+    .ofst-toast.warning {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+    }
+    .ofst-toast.info {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+    }
+    .ofst-toast-icon {
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+    .ofst-toast-close {
+        margin-left: auto;
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        opacity: 0.7;
+        font-size: 18px;
+        padding: 0;
+    }
+    .ofst-toast-close:hover {
+        opacity: 1;
+    }
+    @keyframes ofstSlideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes ofstSlideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+    .ofst-toast.hiding {
+        animation: ofstSlideOut 0.3s ease-out forwards;
+    }
+    
+    /* Edit Modal */
+    .ofst-edit-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 99999;
+        justify-content: center;
+        align-items: center;
+    }
+    .ofst-edit-modal.active {
+        display: flex;
+    }
+    .ofst-edit-modal-content {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    
+    /* Participant Cards */
+    .ofst-participant-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin: 20px 0;
+    }
+    .ofst-participant-grid .card {
+        border-radius: 10px !important;
+    }
+    .ofst-participant-upload {
+        border-radius: 10px !important;
+    }
+    @media (max-width: 782px) {
+        .ofst-participant-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    ';
+    wp_add_inline_style('wp-admin', $css);
+
+    // Add toast JavaScript
+    $js = '
+    function ofstShowToast(message, type) {
+        type = type || "success";
+        var container = document.querySelector(".ofst-toast-container");
+        if (!container) {
+            container = document.createElement("div");
+            container.className = "ofst-toast-container";
+            document.body.appendChild(container);
+        }
+        
+        var icons = {
+            success: "✓",
+            error: "✕",
+            warning: "⚠",
+            info: "ℹ"
+        };
+        
+        var toast = document.createElement("div");
+        toast.className = "ofst-toast " + type;
+        toast.innerHTML = "<span class=\"ofst-toast-icon\">" + icons[type] + "</span>" +
+                         "<span>" + message + "</span>" +
+                         "<button class=\"ofst-toast-close\" onclick=\"this.parentElement.remove()\">×</button>";
+        container.appendChild(toast);
+        
+        setTimeout(function() {
+            toast.classList.add("hiding");
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 5000);
+    }
+    ';
+    wp_add_inline_script('jquery', $js);
+}
+
+/**
+ * Show toast notification (PHP helper)
+ * @param string $message The message to show
+ * @param string $type success|error|warning|info
+ */
+function ofst_cert_toast($message, $type = 'success')
+{
+    $message = esc_js($message);
+    echo "<script>jQuery(function(){ ofstShowToast('$message', '$type'); });</script>";
+}
+
+/**
  * Add admin menu
  */
 add_action('admin_menu', 'ofst_cert_add_admin_menu');
@@ -51,6 +232,16 @@ function ofst_cert_add_admin_menu()
         'manage_options',
         'ofst-certificates-failed',
         'ofst_cert_failed_page'
+    );
+
+    // Rejected Certificates
+    add_submenu_page(
+        'ofst-certificates',
+        'Rejected Certificates',
+        'Rejected',
+        'manage_options',
+        'ofst-certificates-rejected',
+        'ofst_cert_rejected_page'
     );
 
     add_submenu_page(
@@ -109,21 +300,29 @@ function ofst_cert_add_admin_menu()
 function ofst_cert_admin_dashboard()
 {
     // Handle bulk actions
-    if (isset($_POST['ofst_bulk_action']) && isset($_POST['cert_ids'])) {
+    if (isset($_POST['ofst_bulk_action'])) {
         check_admin_referer('ofst_bulk_action_nonce');
 
         $action = sanitize_text_field($_POST['ofst_bulk_action']);
-        $cert_ids = array_map('absint', $_POST['cert_ids']);
+        $cert_ids = isset($_POST['cert_ids']) ? array_map('absint', $_POST['cert_ids']) : [];
 
-        foreach ($cert_ids as $cert_id) {
-            if ($action === 'approve') {
-                ofst_cert_approve_request($cert_id);
-            } elseif ($action === 'reject') {
-                ofst_cert_reject_request($cert_id, 'Bulk rejection');
+        if (empty($action)) {
+            ofst_cert_toast('Please select a bulk action.', 'warning');
+        } elseif (empty($cert_ids)) {
+            ofst_cert_toast('Please select at least one certificate.', 'warning');
+        } else {
+            $success_count = 0;
+            foreach ($cert_ids as $cert_id) {
+                if ($action === 'approve') {
+                    $result = ofst_cert_approve_request($cert_id);
+                    if ($result['success']) $success_count++;
+                } elseif ($action === 'reject') {
+                    ofst_cert_reject_request($cert_id, 'Bulk rejection');
+                    $success_count++;
+                }
             }
+            ofst_cert_toast($success_count . ' certificate(s) processed successfully!', 'success');
         }
-
-        echo '<div class="notice notice-success"><p>Bulk action completed successfully.</p></div>';
     }
 
     // Handle single approval/rejection (not view)
@@ -140,12 +339,12 @@ function ofst_cert_admin_dashboard()
             echo '<script>window.location.href="admin.php?page=ofst-certificates&message=approved";</script>';
             exit;
         } else {
-            echo '<div class="notice notice-error"><p>❌ ' . esc_html($result['error']) . '</p></div>';
+            ofst_cert_toast($result['error'], 'error');
         }
     }
 
     if (isset($_GET['message']) && $_GET['message'] === 'approved') {
-        echo '<div class="notice notice-success"><p>✅ Certificate generated and issued! Email sent to student.</p></div>';
+        ofst_cert_toast('Certificate generated and issued! Email sent to student.', 'success');
     }
 
     if (isset($_GET['action']) && isset($_GET['cert_id']) && $_GET['action'] !== 'view') {
@@ -158,9 +357,9 @@ function ofst_cert_admin_dashboard()
             // Quick approve with today's date
             $result = ofst_cert_approve_request($cert_id, date('Y-m-d'));
             if ($result['success']) {
-                echo '<div class="notice notice-success"><p>✅ Certificate generated and issued! Email sent to student.</p></div>';
+                ofst_cert_toast('Certificate generated and issued! Email sent to student.', 'success');
             } else {
-                echo '<div class="notice notice-error"><p>❌ ' . esc_html($result['error']) . '</p></div>';
+                ofst_cert_toast($result['error'], 'error');
             }
         } elseif ($action === 'reject') {
             $reason = isset($_GET['reason']) ? sanitize_text_field($_GET['reason']) : 'Not specified';
@@ -174,7 +373,7 @@ function ofst_cert_admin_dashboard()
                 ofst_cert_send_rejection_email($request, $reason);
             }
 
-            echo '<div class="notice notice-warning"><p>Certificate request rejected. Email sent to student.</p></div>';
+            ofst_cert_toast('Certificate request rejected. Email sent to student.', 'warning');
         }
     }
 
@@ -212,57 +411,56 @@ function ofst_cert_admin_dashboard()
                         </select>
                         <input type="submit" class="button action" value="Apply">
                     </div>
-                </div>
 
-                <table class="wp-list-table widefat fixed striped">
-                    <thead>
-                        <tr>
-                            <th width="40"><input type="checkbox" id="select-all"></th>
-                            <th>Certificate ID</th>
-                            <th>Student Name</th>
-                            <th>Email</th>
-                            <th>Cert Type</th>
-                            <th>Course/Event</th>
-                            <th>Requested</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($requests as $req): ?>
+                    <table class="wp-list-table widefat fixed striped">
+                        <thead>
                             <tr>
-                                <td><input type="checkbox" name="cert_ids[]" value="<?php echo $req->id; ?>" class="cert-checkbox"></td>
-                                <td><strong><?php echo esc_html($req->certificate_id); ?></strong></td>
-                                <td><?php echo esc_html($req->first_name . ' ' . $req->last_name); ?></td>
-                                <td><?php echo esc_html($req->email); ?></td>
-                                <td>
-                                    <span class="cert-type-badge <?php echo esc_attr($req->template_type); ?>">
-                                        <?php echo $req->template_type === 'cromemart' ? 'Cromemart' : 'Ofastshop'; ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <?php
-                                    if ($req->template_type === 'cromemart') {
-                                        // Show event theme for Cromemart certificates
-                                        $display = $req->event_theme ?: ($req->event_name ?: '-');
-                                        echo esc_html($display);
-                                    } else {
-                                        // Show product name for Ofastshop
-                                        echo esc_html($req->product_name ?: '-');
-                                    }
-                                    ?>
-                                </td>
-                                <td><?php echo date('M d, Y', strtotime($req->requested_date)); ?></td>
-                                <td>
-                                    <a href="?page=ofst-certificates&action=view&cert_id=<?php echo $req->id; ?>" class="button button-small">View</a>
-                                    <a href="#"
-                                        class="button button-small reject-btn"
-                                        data-cert-id="<?php echo $req->id; ?>"
-                                        data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>">Reject</a>
-                                </td>
+                                <th width="40"><input type="checkbox" id="select-all"></th>
+                                <th>Certificate ID</th>
+                                <th>Student Name</th>
+                                <th>Email</th>
+                                <th>Cert Type</th>
+                                <th>Course/Event</th>
+                                <th>Requested</th>
+                                <th>Actions</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($requests as $req): ?>
+                                <tr>
+                                    <td><input type="checkbox" name="cert_ids[]" value="<?php echo $req->id; ?>" class="cert-checkbox"></td>
+                                    <td><strong><?php echo esc_html($req->certificate_id); ?></strong></td>
+                                    <td><?php echo esc_html($req->first_name . ' ' . $req->last_name); ?></td>
+                                    <td><?php echo esc_html($req->email); ?></td>
+                                    <td>
+                                        <span class="cert-type-badge <?php echo esc_attr($req->template_type); ?>">
+                                            <?php echo $req->template_type === 'cromemart' ? 'Cromemart' : 'Ofastshop'; ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php
+                                        if ($req->template_type === 'cromemart') {
+                                            // Show event theme for Cromemart certificates
+                                            $display = $req->event_theme ?: ($req->event_name ?: '-');
+                                            echo esc_html($display);
+                                        } else {
+                                            // Show product name for Ofastshop
+                                            echo esc_html($req->product_name ?: '-');
+                                        }
+                                        ?>
+                                    </td>
+                                    <td><?php echo date('M d, Y', strtotime($req->requested_date)); ?></td>
+                                    <td>
+                                        <a href="?page=ofst-certificates&action=view&cert_id=<?php echo $req->id; ?>" class="button button-small">View</a>
+                                        <a href="#"
+                                            class="button button-small reject-btn"
+                                            data-cert-id="<?php echo $req->id; ?>"
+                                            data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>">Reject</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
             </form>
         <?php endif; ?>
 
@@ -603,9 +801,9 @@ function ofst_cert_issued_page()
         $cert_id = absint($_GET['cert_id']);
         $result = ofst_cert_retry_email($cert_id);
         if ($result['success']) {
-            echo '<div class="notice notice-success"><p>✅ Email resent successfully!</p></div>';
+            ofst_cert_toast('Email resent successfully!', 'success');
         } else {
-            echo '<div class="notice notice-error"><p>❌ ' . esc_html($result['error']) . '</p></div>';
+            ofst_cert_toast($result['error'], 'error');
         }
     }
 
@@ -702,19 +900,19 @@ function ofst_cert_failed_page()
                 // Try sending email after regeneration
                 $email_result = ofst_cert_retry_email($cert_id);
                 if ($email_result['success']) {
-                    echo '<div class="notice notice-success"><p>✅ Certificate regenerated and email sent successfully!</p></div>';
+                    ofst_cert_toast('Certificate regenerated and email sent successfully!', 'success');
                 } else {
-                    echo '<div class="notice notice-warning"><p>⚠️ Certificate regenerated but email failed. You can try resending.</p></div>';
+                    ofst_cert_toast('Certificate regenerated but email failed. You can try resending.', 'warning');
                 }
             } else {
-                echo '<div class="notice notice-error"><p>❌ ' . esc_html($result['error']) . '</p></div>';
+                ofst_cert_toast($result['error'], 'error');
             }
         } elseif ($action === 'resend') {
             $result = ofst_cert_retry_email($cert_id);
             if ($result['success']) {
-                echo '<div class="notice notice-success"><p>✅ Email resent successfully!</p></div>';
+                ofst_cert_toast('Email resent successfully!', 'success');
             } else {
-                echo '<div class="notice notice-error"><p>❌ ' . esc_html($result['error']) . '</p></div>';
+                ofst_cert_toast($result['error'], 'error');
             }
         }
     }
@@ -818,6 +1016,213 @@ function ofst_cert_failed_page()
 <?php
 }
 
+/**
+ * Rejected Certificates Page
+ * Shows certificates that were rejected by admin
+ */
+function ofst_cert_rejected_page()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
+
+    // Handle re-approval
+    if (isset($_POST['reapprove_cert']) && isset($_POST['cert_id'])) {
+        check_admin_referer('ofst_reapprove_' . $_POST['cert_id']);
+
+        $cert_id = absint($_POST['cert_id']);
+        $completion_date = isset($_POST['completion_date']) ? sanitize_text_field($_POST['completion_date']) : date('Y-m-d');
+
+        $result = ofst_cert_approve_request($cert_id, $completion_date);
+
+        if ($result['success']) {
+            ofst_cert_toast('Certificate approved and generated successfully!', 'success');
+        } else {
+            ofst_cert_toast($result['error'], 'error');
+        }
+    }
+
+    // Handle permanent deletion
+    if (isset($_GET['delete_rejected']) && isset($_GET['_wpnonce'])) {
+        $id = absint($_GET['delete_rejected']);
+        if (wp_verify_nonce($_GET['_wpnonce'], 'delete_rejected_' . $id)) {
+            $wpdb->delete($table, ['id' => $id]);
+            ofst_cert_toast('Rejected certificate deleted permanently.', 'success');
+        }
+    }
+
+    // Get rejected certificates with event data
+    $rejected = $wpdb->get_results("
+        SELECT r.*, e.event_theme, e.event_name, i.institution_name 
+        FROM $table r 
+        LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
+        WHERE r.status = 'rejected' 
+        ORDER BY r.processed_date DESC
+    ");
+
+?>
+    <div class="wrap">
+        <h1>Rejected Certificates</h1>
+        <p><a href="?page=ofst-certificates" class="button">← Back to Pending</a></p>
+        <p>Certificates that were rejected. You can view the rejection reason or re-approve them.</p>
+
+        <?php if (empty($rejected)): ?>
+            <div class="notice notice-info">
+                <p>No rejected certificates.</p>
+            </div>
+        <?php else: ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th width="130">Certificate ID</th>
+                        <th>Student</th>
+                        <th>Email</th>
+                        <th>Course/Event</th>
+                        <th>Rejection Reason</th>
+                        <th>Rejected Date</th>
+                        <th width="220">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($rejected as $cert): ?>
+                        <tr>
+                            <td><strong><?php echo esc_html($cert->certificate_id); ?></strong></td>
+                            <td><?php echo esc_html($cert->first_name . ' ' . $cert->last_name); ?></td>
+                            <td><?php echo esc_html($cert->email); ?></td>
+                            <td>
+                                <?php
+                                if ($cert->template_type === 'cromemart') {
+                                    echo esc_html($cert->event_theme ?: ($cert->event_name ?: '-'));
+                                } else {
+                                    echo esc_html($cert->product_name ?: '-');
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <span style="color: #856404; background: #fff3cd; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+                                    <?php echo esc_html($cert->rejection_reason ?: 'Not specified'); ?>
+                                </span>
+                            </td>
+                            <td><?php echo $cert->processed_date ? date('M d, Y', strtotime($cert->processed_date)) : '-'; ?></td>
+                            <td>
+                                <a href="?page=ofst-certificates-rejected&action=view&cert_id=<?php echo $cert->id; ?>"
+                                    class="button button-small">View Details</a>
+                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-certificates-rejected&delete_rejected=' . $cert->id), 'delete_rejected_' . $cert->id); ?>"
+                                    onclick="return confirm('Permanently delete this rejected request?');"
+                                    class="button button-small" style="color: #a00;">Delete</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <!-- View Details Modal -->
+        <?php if (isset($_GET['action']) && $_GET['action'] === 'view' && isset($_GET['cert_id'])):
+            $cert_id = absint($_GET['cert_id']);
+            $cert = $wpdb->get_row($wpdb->prepare("
+                SELECT r.*, e.event_theme, e.event_name, e.event_date, i.institution_name 
+                FROM $table r 
+                LEFT JOIN $event_table e ON r.event_date_id = e.id 
+                LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
+                WHERE r.id = %d
+            ", $cert_id));
+            if ($cert):
+        ?>
+                <div class="ofst-cert-modal" style="display:block;">
+                    <div class="ofst-cert-modal-content">
+                        <span class="ofst-cert-modal-close" onclick="window.location.href='?page=ofst-certificates-rejected'">&times;</span>
+                        <h2>Rejected Certificate Details</h2>
+
+                        <div style="background: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <strong style="color: #721c24;">Rejection Reason:</strong>
+                            <p style="color: #721c24; margin: 5px 0 0 0;"><?php echo esc_html($cert->rejection_reason ?: 'Not specified'); ?></p>
+                        </div>
+
+                        <table class="form-table">
+                            <tr>
+                                <th>Certificate ID</th>
+                                <td><strong><?php echo esc_html($cert->certificate_id); ?></strong></td>
+                            </tr>
+                            <tr>
+                                <th>Student Name</th>
+                                <td><?php echo esc_html($cert->first_name . ' ' . $cert->last_name); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Email</th>
+                                <td><?php echo esc_html($cert->email); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Certificate Type</th>
+                                <td><?php echo $cert->template_type === 'cromemart' ? 'Cromemart (Event)' : 'Ofastshop (WooCommerce)'; ?></td>
+                            </tr>
+                            <?php if ($cert->template_type === 'cromemart'): ?>
+                                <tr>
+                                    <th>Institution</th>
+                                    <td><?php echo esc_html($cert->institution_name ?: '-'); ?></td>
+                                </tr>
+                                <tr>
+                                    <th>Event</th>
+                                    <td><?php echo esc_html($cert->event_name ?: '-'); ?></td>
+                                </tr>
+                                <tr>
+                                    <th>Event Theme</th>
+                                    <td><?php echo esc_html($cert->event_theme ?: '-'); ?></td>
+                                </tr>
+                                <tr>
+                                    <th>Event Date</th>
+                                    <td><?php echo $cert->event_date ? date('M d, Y', strtotime($cert->event_date)) : '-'; ?></td>
+                                </tr>
+                            <?php else: ?>
+                                <tr>
+                                    <th>Product</th>
+                                    <td><?php echo esc_html($cert->product_name ?: '-'); ?></td>
+                                </tr>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <td><?php echo esc_html($cert->order_id ?: '-'); ?></td>
+                                </tr>
+                            <?php endif; ?>
+                            <tr>
+                                <th>Rejected On</th>
+                                <td><?php echo $cert->processed_date ? date('M d, Y g:i A', strtotime($cert->processed_date)) : '-'; ?></td>
+                            </tr>
+                            <tr>
+                                <th>Requested On</th>
+                                <td><?php echo date('M d, Y g:i A', strtotime($cert->submitted_date)); ?></td>
+                            </tr>
+                        </table>
+
+                        <hr style="margin: 20px 0;">
+
+                        <h3>Re-approve This Certificate</h3>
+                        <form method="post">
+                            <?php wp_nonce_field('ofst_reapprove_' . $cert->id); ?>
+                            <input type="hidden" name="cert_id" value="<?php echo $cert->id; ?>">
+                            <table class="form-table">
+                                <tr>
+                                    <th>Completion Date</th>
+                                    <td>
+                                        <input type="date" name="completion_date" value="<?php echo date('Y-m-d'); ?>" required>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p>
+                                <button type="submit" name="reapprove_cert" class="button button-primary">
+                                    ✓ Approve & Generate Certificate
+                                </button>
+                                <a href="?page=ofst-certificates-rejected" class="button">Cancel</a>
+                            </p>
+                        </form>
+                    </div>
+                </div>
+        <?php endif;
+        endif; ?>
+    </div>
+<?php
+}
+
 
 /**
  * Verification Log Page
@@ -870,27 +1275,26 @@ function ofst_cert_verification_log()
                 </tbody>
             </table>
         <?php endif; ?>
-    </div>
 
-    <style>
-        .result-badge {
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: 600;
-        }
+        <style>
+            .result-badge {
+                padding: 3px 8px;
+                border-radius: 3px;
+                font-size: 11px;
+                font-weight: 600;
+            }
 
-        .result-badge.found {
-            background: #d4edda;
-            color: #155724;
-        }
+            .result-badge.found {
+                background: #d4edda;
+                color: #155724;
+            }
 
-        .result-badge.not_found {
-            background: #f8d7da;
-            color: #721c24;
-        }
-    </style>
-<?php
+            .result-badge.not_found {
+                background: #f8d7da;
+                color: #721c24;
+            }
+        </style>
+    <?php
 }
 
 /**
@@ -919,77 +1323,77 @@ function ofst_cert_settings_page()
         $delete_on_uninstall = isset($_POST['delete_on_uninstall']) ? 'yes' : 'no';
         update_option('ofst_cert_delete_on_uninstall', $delete_on_uninstall);
 
-        echo '<div class="notice notice-success"><p>Settings saved successfully!</p></div>';
+        ofst_cert_toast('Settings saved successfully!', 'success');
     }
 
-?>
-    <div class="wrap">
-        <h1>Certificate System Settings</h1>
+    ?>
+        <div class="wrap">
+            <h1>Certificate System Settings</h1>
 
-        <form method="post">
-            <?php wp_nonce_field('ofst_settings_nonce'); ?>
+            <form method="post">
+                <?php wp_nonce_field('ofst_settings_nonce'); ?>
 
-            <h2>Email Settings</h2>
-            <table class="form-table">
-                <tr>
-                    <th>From Email</th>
-                    <td>
-                        <input type="email" name="from_email" value="<?php echo esc_attr(ofst_cert_get_setting('from_email')); ?>" class="regular-text">
-                        <p class="description">Email address used to send certificate emails</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th>From Name</th>
-                    <td>
-                        <input type="text" name="from_name" value="<?php echo esc_attr(ofst_cert_get_setting('from_name')); ?>" class="regular-text">
-                        <p class="description">Name shown in certificate emails</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th>Support Email</th>
-                    <td>
-                        <input type="email" name="support_email" value="<?php echo esc_attr(ofst_cert_get_setting('support_email')); ?>" class="regular-text">
-                        <p class="description">Email for student support inquiries</p>
-                    </td>
-                </tr>
-            </table>
+                <h2>Email Settings</h2>
+                <table class="form-table">
+                    <tr>
+                        <th>From Email</th>
+                        <td>
+                            <input type="email" name="from_email" value="<?php echo esc_attr(ofst_cert_get_setting('from_email')); ?>" class="regular-text">
+                            <p class="description">Email address used to send certificate emails</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>From Name</th>
+                        <td>
+                            <input type="text" name="from_name" value="<?php echo esc_attr(ofst_cert_get_setting('from_name')); ?>" class="regular-text">
+                            <p class="description">Name shown in certificate emails</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Support Email</th>
+                        <td>
+                            <input type="email" name="support_email" value="<?php echo esc_attr(ofst_cert_get_setting('support_email')); ?>" class="regular-text">
+                            <p class="description">Email for student support inquiries</p>
+                        </td>
+                    </tr>
+                </table>
 
-            <h2>Security (Cloudflare Turnstile)</h2>
-            <table class="form-table">
-                <tr>
-                    <th>Turnstile Site Key</th>
-                    <td>
-                        <input type="text" name="turnstile_site_key" value="<?php echo esc_attr(ofst_cert_get_setting('turnstile_site_key')); ?>" class="large-text">
-                    </td>
-                </tr>
-                <tr>
-                    <th>Turnstile Secret Key</th>
-                    <td>
-                        <input type="text" name="turnstile_secret_key" value="<?php echo esc_attr(ofst_cert_get_setting('turnstile_secret_key')); ?>" class="large-text">
-                    </td>
-                </tr>
-            </table>
+                <h2>Security (Cloudflare Turnstile)</h2>
+                <table class="form-table">
+                    <tr>
+                        <th>Turnstile Site Key</th>
+                        <td>
+                            <input type="text" name="turnstile_site_key" value="<?php echo esc_attr(ofst_cert_get_setting('turnstile_site_key')); ?>" class="large-text">
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Turnstile Secret Key</th>
+                        <td>
+                            <input type="text" name="turnstile_secret_key" value="<?php echo esc_attr(ofst_cert_get_setting('turnstile_secret_key')); ?>" class="large-text">
+                        </td>
+                    </tr>
+                </table>
 
-            <h2>Data Management</h2>
-            <table class="form-table">
-                <tr>
-                    <th>Delete Data on Uninstall</th>
-                    <td>
-                        <label>
-                            <input type="checkbox" name="delete_on_uninstall" value="yes" <?php checked(get_option('ofst_cert_delete_on_uninstall', 'no'), 'yes'); ?>>
-                            Delete all certificate data when plugin is deleted (not just deactivated)
-                        </label>
-                        <p class="description" style="color: #d63638;"><strong>Warning:</strong> This will permanently delete all certificates, requests, verification logs, and settings. This action cannot be undone!</p>
-                    </td>
-                </tr>
-            </table>
+                <h2>Data Management</h2>
+                <table class="form-table">
+                    <tr>
+                        <th>Delete Data on Uninstall</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="delete_on_uninstall" value="yes" <?php checked(get_option('ofst_cert_delete_on_uninstall', 'no'), 'yes'); ?>>
+                                Delete all certificate data when plugin is deleted (not just deactivated)
+                            </label>
+                            <p class="description" style="color: #d63638;"><strong>Warning:</strong> This will permanently delete all certificates, requests, verification logs, and settings. This action cannot be undone!</p>
+                        </td>
+                    </tr>
+                </table>
 
-            <p class="submit">
-                <input type="submit" name="ofst_save_settings" class="button button-primary" value="Save Settings">
-            </p>
-        </form>
-    </div>
-<?php
+                <p class="submit">
+                    <input type="submit" name="ofst_save_settings" class="button button-primary" value="Save Settings">
+                </p>
+            </form>
+        </div>
+    <?php
 }
 
 /**
@@ -1002,93 +1406,119 @@ function ofst_cert_institutions_page()
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_institutions';
 
-    // Handle form submissions
+    // Handle form submissions (Add/Edit)
     if (isset($_POST['ofst_add_institution']) && check_admin_referer('ofst_institution_action')) {
         $name = sanitize_text_field($_POST['institution_name']);
         $logo = esc_url_raw($_POST['institution_logo']);
+        $edit_id = isset($_POST['edit_id']) ? absint($_POST['edit_id']) : 0;
 
         if (!empty($name)) {
-            $wpdb->insert($table, [
-                'institution_name' => $name,
-                'institution_logo' => $logo,
-                'is_active' => 1,
-                'created_date' => current_time('mysql'),
-                'created_by' => get_current_user_id()
-            ]);
-            echo '<div class="notice notice-success"><p>Institution added successfully!</p></div>';
+            if ($edit_id) {
+                // Update existing
+                $wpdb->update($table, [
+                    'institution_name' => $name,
+                    'institution_logo' => $logo
+                ], ['id' => $edit_id]);
+                ofst_cert_toast('Institution updated successfully!', 'success');
+            } else {
+                // Insert new
+                $wpdb->insert($table, [
+                    'institution_name' => $name,
+                    'institution_logo' => $logo,
+                    'is_active' => 1,
+                    'created_date' => current_time('mysql'),
+                    'created_by' => get_current_user_id()
+                ]);
+                ofst_cert_toast('Institution added successfully!', 'success');
+            }
         }
     }
 
     // Handle delete
     if (isset($_GET['delete_institution']) && check_admin_referer('delete_institution_' . $_GET['delete_institution'])) {
         $wpdb->delete($table, ['id' => absint($_GET['delete_institution'])]);
-        echo '<div class="notice notice-success"><p>Institution deleted!</p></div>';
+        ofst_cert_toast('Institution deleted!', 'success');
+    }
+
+    // Check if editing
+    $editing = null;
+    if (isset($_GET['edit_institution'])) {
+        $editing = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", absint($_GET['edit_institution'])));
     }
 
     // Get all institutions
     $institutions = $wpdb->get_results("SELECT * FROM $table ORDER BY institution_name ASC");
-?>
-    <div class="wrap">
-        <h1>Institution Management</h1>
-        <p>Manage institutions for Cromemart event certificates.</p>
+    ?>
+        <div class="wrap">
+            <h1>Institution Management</h1>
+            <p>Manage institutions for Cromemart event certificates.</p>
 
-        <!-- Add New Form -->
-        <div class="card" style="max-width: 500px; padding: 20px; margin-bottom: 20px;">
-            <h2>Add New Institution</h2>
-            <form method="post">
-                <?php wp_nonce_field('ofst_institution_action'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th><label for="institution_name">Institution Name *</label></th>
-                        <td><input type="text" name="institution_name" id="institution_name" class="regular-text" required></td>
-                    </tr>
-                    <tr>
-                        <th><label for="institution_logo">Logo URL</label></th>
-                        <td><input type="url" name="institution_logo" id="institution_logo" class="regular-text" placeholder="https://..."></td>
-                    </tr>
-                </table>
-                <p><input type="submit" name="ofst_add_institution" class="button button-primary" value="Add Institution"></p>
-            </form>
-        </div>
-
-        <!-- Institutions List -->
-        <h2>All Institutions (<?php echo count($institutions); ?>)</h2>
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Logo</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($institutions)): ?>
-                    <tr>
-                        <td colspan="6">No institutions yet. Add one above!</td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($institutions as $inst): ?>
+            <!-- Add/Edit Form -->
+            <div class="card" style="max-width: 500px; padding: 20px; margin-bottom: 20px;">
+                <h2><?php echo $editing ? 'Edit Institution' : 'Add New Institution'; ?></h2>
+                <form method="post">
+                    <?php wp_nonce_field('ofst_institution_action'); ?>
+                    <?php if ($editing): ?>
+                        <input type="hidden" name="edit_id" value="<?php echo $editing->id; ?>">
+                    <?php endif; ?>
+                    <table class="form-table">
                         <tr>
-                            <td><?php echo $inst->id; ?></td>
-                            <td><strong><?php echo esc_html($inst->institution_name); ?></strong></td>
-                            <td><?php echo $inst->institution_logo ? '<img src="' . esc_url($inst->institution_logo) . '" height="30">' : '-'; ?></td>
-                            <td><?php echo $inst->is_active ? '<span style="color:green;">Active</span>' : '<span style="color:red;">Inactive</span>'; ?></td>
-                            <td><?php echo date('M d, Y', strtotime($inst->created_date)); ?></td>
-                            <td>
-                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-institutions&delete_institution=' . $inst->id), 'delete_institution_' . $inst->id); ?>"
-                                    onclick="return confirm('Delete this institution?');"
-                                    style="color: red;">Delete</a>
-                            </td>
+                            <th><label for="institution_name">Institution Name *</label></th>
+                            <td><input type="text" name="institution_name" id="institution_name" class="regular-text" required value="<?php echo $editing ? esc_attr($editing->institution_name) : ''; ?>"></td>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-<?php
+                        <tr>
+                            <th><label for="institution_logo">Logo URL</label></th>
+                            <td><input type="url" name="institution_logo" id="institution_logo" class="regular-text" placeholder="https://..." value="<?php echo $editing ? esc_attr($editing->institution_logo) : ''; ?>"></td>
+                        </tr>
+                    </table>
+                    <p>
+                        <input type="submit" name="ofst_add_institution" class="button button-primary" value="<?php echo $editing ? 'Update Institution' : 'Add Institution'; ?>">
+                        <?php if ($editing): ?>
+                            <a href="<?php echo admin_url('admin.php?page=ofst-institutions'); ?>" class="button">Cancel</a>
+                        <?php endif; ?>
+                    </p>
+                </form>
+            </div>
+
+            <!-- Institutions List -->
+            <h2>All Institutions (<?php echo count($institutions); ?>)</h2>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Logo</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($institutions)): ?>
+                        <tr>
+                            <td colspan="6">No institutions yet. Add one above!</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($institutions as $inst): ?>
+                            <tr>
+                                <td><?php echo $inst->id; ?></td>
+                                <td><strong><?php echo esc_html($inst->institution_name); ?></strong></td>
+                                <td><?php echo $inst->institution_logo ? '<img src="' . esc_url($inst->institution_logo) . '" height="30">' : '-'; ?></td>
+                                <td><?php echo $inst->is_active ? '<span style="color:green;">Active</span>' : '<span style="color:red;">Inactive</span>'; ?></td>
+                                <td><?php echo date('M d, Y', strtotime($inst->created_date)); ?></td>
+                                <td>
+                                    <a href="<?php echo admin_url('admin.php?page=ofst-institutions&edit_institution=' . $inst->id); ?>" class="button button-small">Edit</a>
+                                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-institutions&delete_institution=' . $inst->id), 'delete_institution_' . $inst->id); ?>"
+                                        onclick="return confirm('Delete this institution?');"
+                                        style="color: red;">Delete</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php
 }
 
 /**
@@ -1102,31 +1532,50 @@ function ofst_cert_event_dates_page()
     $events_table = $wpdb->prefix . 'ofst_cert_event_dates';
     $inst_table = $wpdb->prefix . 'ofst_cert_institutions';
 
-    // Handle add event
+    // Handle add/edit event
     if (isset($_POST['ofst_add_event']) && check_admin_referer('ofst_event_action')) {
         $inst_id = absint($_POST['institution_id']);
         $name = sanitize_text_field($_POST['event_name']);
         $date = sanitize_text_field($_POST['event_date']);
         $theme = sanitize_text_field($_POST['event_theme']);
+        $edit_id = isset($_POST['edit_id']) ? absint($_POST['edit_id']) : 0;
 
         if (!empty($inst_id) && !empty($name) && !empty($date)) {
-            $wpdb->insert($events_table, [
-                'institution_id' => $inst_id,
-                'event_name' => $name,
-                'event_date' => $date,
-                'event_theme' => $theme,
-                'is_active' => 1,
-                'created_date' => current_time('mysql'),
-                'created_by' => get_current_user_id()
-            ]);
-            echo '<div class="notice notice-success"><p>Event added successfully!</p></div>';
+            if ($edit_id) {
+                // Update existing
+                $wpdb->update($events_table, [
+                    'institution_id' => $inst_id,
+                    'event_name' => $name,
+                    'event_date' => $date,
+                    'event_theme' => $theme
+                ], ['id' => $edit_id]);
+                ofst_cert_toast('Event updated successfully!', 'success');
+            } else {
+                // Insert new
+                $wpdb->insert($events_table, [
+                    'institution_id' => $inst_id,
+                    'event_name' => $name,
+                    'event_date' => $date,
+                    'event_theme' => $theme,
+                    'is_active' => 1,
+                    'created_date' => current_time('mysql'),
+                    'created_by' => get_current_user_id()
+                ]);
+                ofst_cert_toast('Event added successfully!', 'success');
+            }
         }
     }
 
     // Handle delete
     if (isset($_GET['delete_event']) && check_admin_referer('delete_event_' . $_GET['delete_event'])) {
         $wpdb->delete($events_table, ['id' => absint($_GET['delete_event'])]);
-        echo '<div class="notice notice-success"><p>Event deleted!</p></div>';
+        ofst_cert_toast('Event deleted!', 'success');
+    }
+
+    // Check if editing
+    $editing = null;
+    if (isset($_GET['edit_event'])) {
+        $editing = $wpdb->get_row($wpdb->prepare("SELECT * FROM $events_table WHERE id = %d", absint($_GET['edit_event'])));
     }
 
     // Get data
@@ -1137,91 +1586,100 @@ function ofst_cert_event_dates_page()
         LEFT JOIN $inst_table i ON e.institution_id = i.id 
         ORDER BY e.event_date DESC
     ");
-?>
-    <div class="wrap">
-        <h1>Event Dates Management</h1>
-        <p>Manage event dates for Cromemart certificates.</p>
+    ?>
+        <div class="wrap">
+            <h1>Event Dates Management</h1>
+            <p>Manage event dates for Cromemart certificates.</p>
 
-        <?php if (empty($institutions)): ?>
-            <div class="notice notice-warning">
-                <p>No institutions found! <a href="<?php echo admin_url('admin.php?page=ofst-institutions'); ?>">Add an institution first</a>.</p>
-            </div>
-        <?php else: ?>
-            <!-- Add New Event Form -->
-            <div class="card" style="max-width: 600px; padding: 20px; margin-bottom: 20px;">
-                <h2>Add New Event</h2>
-                <form method="post">
-                    <?php wp_nonce_field('ofst_event_action'); ?>
-                    <table class="form-table">
-                        <tr>
-                            <th><label for="institution_id">Institution *</label></th>
-                            <td>
-                                <select name="institution_id" id="institution_id" required>
-                                    <option value="">-- Select --</option>
-                                    <?php foreach ($institutions as $inst): ?>
-                                        <option value="<?php echo $inst->id; ?>"><?php echo esc_html($inst->institution_name); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><label for="event_name">Event Name *</label></th>
-                            <td><input type="text" name="event_name" id="event_name" class="regular-text" required></td>
-                        </tr>
-                        <tr>
-                            <th><label for="event_date">Event Date *</label></th>
-                            <td><input type="date" name="event_date" id="event_date" required></td>
-                        </tr>
-                        <tr>
-                            <th><label for="event_theme">Theme (Optional)</label></th>
-                            <td><input type="text" name="event_theme" id="event_theme" class="regular-text" placeholder="e.g. Annual Tech Conference 2024"></td>
-                        </tr>
-                    </table>
-                    <p><input type="submit" name="ofst_add_event" class="button button-primary" value="Add Event"></p>
-                </form>
-            </div>
-        <?php endif; ?>
+            <?php if (empty($institutions)): ?>
+                <div class="notice notice-warning">
+                    <p>No institutions found! <a href="<?php echo admin_url('admin.php?page=ofst-institutions'); ?>">Add an institution first</a>.</p>
+                </div>
+            <?php else: ?>
+                <!-- Add/Edit Event Form -->
+                <div class="card" style="max-width: 600px; padding: 20px; margin-bottom: 20px;">
+                    <h2><?php echo $editing ? 'Edit Event' : 'Add New Event'; ?></h2>
+                    <form method="post">
+                        <?php wp_nonce_field('ofst_event_action'); ?>
+                        <?php if ($editing): ?>
+                            <input type="hidden" name="edit_id" value="<?php echo $editing->id; ?>">
+                        <?php endif; ?>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="institution_id">Institution *</label></th>
+                                <td>
+                                    <select name="institution_id" id="institution_id" required>
+                                        <option value="">-- Select --</option>
+                                        <?php foreach ($institutions as $inst): ?>
+                                            <option value="<?php echo $inst->id; ?>" <?php echo ($editing && $editing->institution_id == $inst->id) ? 'selected' : ''; ?>><?php echo esc_html($inst->institution_name); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="event_name">Event Name *</label></th>
+                                <td><input type="text" name="event_name" id="event_name" class="regular-text" required value="<?php echo $editing ? esc_attr($editing->event_name) : ''; ?>"></td>
+                            </tr>
+                            <tr>
+                                <th><label for="event_date">Event Date *</label></th>
+                                <td><input type="date" name="event_date" id="event_date" required value="<?php echo $editing ? esc_attr($editing->event_date) : ''; ?>"></td>
+                            </tr>
+                            <tr>
+                                <th><label for="event_theme">Theme (Optional)</label></th>
+                                <td><input type="text" name="event_theme" id="event_theme" class="regular-text" placeholder="e.g. Annual Tech Conference 2024" value="<?php echo $editing ? esc_attr($editing->event_theme) : ''; ?>"></td>
+                            </tr>
+                        </table>
+                        <p>
+                            <input type="submit" name="ofst_add_event" class="button button-primary" value="<?php echo $editing ? 'Update Event' : 'Add Event'; ?>">
+                            <?php if ($editing): ?>
+                                <a href="<?php echo admin_url('admin.php?page=ofst-event-dates'); ?>" class="button">Cancel</a>
+                            <?php endif; ?>
+                        </p>
+                    </form>
+                </div>
+            <?php endif; ?>
 
-        <!-- Events List -->
-        <h2>All Events (<?php echo count($events); ?>)</h2>
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Institution</th>
-                    <th>Event Name</th>
-                    <th>Date</th>
-                    <th>Theme</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($events)): ?>
+            <!-- Events List -->
+            <h2>All Events (<?php echo count($events); ?>)</h2>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
                     <tr>
-                        <td colspan="7">No events yet. Add one above!</td>
+                        <th>ID</th>
+                        <th>Institution</th>
+                        <th>Event Name</th>
+                        <th>Date</th>
+                        <th>Theme</th>
+                        <th>Status</th>
+                        <th>Actions</th>
                     </tr>
-                <?php else: ?>
-                    <?php foreach ($events as $evt): ?>
+                </thead>
+                <tbody>
+                    <?php if (empty($events)): ?>
                         <tr>
-                            <td><?php echo $evt->id; ?></td>
-                            <td><?php echo esc_html($evt->institution_name); ?></td>
-                            <td><strong><?php echo esc_html($evt->event_name); ?></strong></td>
-                            <td><?php echo date('M d, Y', strtotime($evt->event_date)); ?></td>
-                            <td><?php echo $evt->event_theme ? esc_html($evt->event_theme) : '-'; ?></td>
-                            <td><?php echo $evt->is_active ? '<span style="color:green;">Active</span>' : '<span style="color:red;">Inactive</span>'; ?></td>
-                            <td>
-                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-event-dates&delete_event=' . $evt->id), 'delete_event_' . $evt->id); ?>"
-                                    onclick="return confirm('Delete this event?');"
-                                    style="color: red;">Delete</a>
-                            </td>
+                            <td colspan="7">No events yet. Add one above!</td>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-<?php
+                    <?php else: ?>
+                        <?php foreach ($events as $evt): ?>
+                            <tr>
+                                <td><?php echo $evt->id; ?></td>
+                                <td><?php echo esc_html($evt->institution_name); ?></td>
+                                <td><strong><?php echo esc_html($evt->event_name); ?></strong></td>
+                                <td><?php echo date('M d, Y', strtotime($evt->event_date)); ?></td>
+                                <td><?php echo $evt->event_theme ? esc_html($evt->event_theme) : '-'; ?></td>
+                                <td><?php echo $evt->is_active ? '<span style="color:green;">Active</span>' : '<span style="color:red;">Inactive</span>'; ?></td>
+                                <td>
+                                    <a href="<?php echo admin_url('admin.php?page=ofst-event-dates&edit_event=' . $evt->id); ?>" class="button button-small">Edit</a>
+                                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-event-dates&delete_event=' . $evt->id), 'delete_event_' . $evt->id); ?>"
+                                        onclick="return confirm('Delete this event?');"
+                                        style="color: red;">Delete</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php
 }
 
 // =====================================================
@@ -1238,64 +1696,137 @@ function ofst_cert_participants_page()
     if (isset($_POST['add_participant']) && check_admin_referer('add_participant_nonce')) {
         $event_id = absint($_POST['event_date_id']);
         $name = sanitize_text_field($_POST['participant_name']);
+        $email = isset($_POST['participant_email']) ? sanitize_email($_POST['participant_email']) : '';
 
         if ($event_id && $name) {
             $wpdb->insert($participants_table, [
                 'event_date_id' => $event_id,
                 'full_name' => $name,
+                'email' => $email ?: null,
                 'added_date' => current_time('mysql'),
                 'added_by' => get_current_user_id()
             ]);
-            echo '<div class="notice notice-success"><p>Participant added successfully!</p></div>';
+            ofst_cert_toast('Participant added successfully!', 'success');
         }
     }
 
-    // Handle Bulk Add (text paste)
+    // Handle Bulk Add (text paste) - supports "name" or "name,email" format
     if (isset($_POST['bulk_add_participants']) && check_admin_referer('bulk_add_nonce')) {
         $event_id = absint($_POST['bulk_event_id']);
         $names_raw = sanitize_textarea_field($_POST['bulk_names']);
 
         if ($event_id && $names_raw) {
-            $names = array_filter(array_map('trim', explode("\n", $names_raw)));
+            $lines = array_filter(array_map('trim', explode("\n", $names_raw)));
             $added = 0;
 
-            foreach ($names as $name) {
+            foreach ($lines as $line) {
+                // Check if line has comma (name,email format)
+                if (strpos($line, ',') !== false) {
+                    $parts = array_map('trim', explode(',', $line, 2));
+                    $name = sanitize_text_field($parts[0]);
+                    $email = isset($parts[1]) ? sanitize_email($parts[1]) : '';
+                } else {
+                    $name = sanitize_text_field($line);
+                    $email = '';
+                }
+
                 if (!empty($name)) {
                     $wpdb->insert($participants_table, [
                         'event_date_id' => $event_id,
                         'full_name' => $name,
+                        'email' => $email ?: null,
                         'added_date' => current_time('mysql'),
                         'added_by' => get_current_user_id()
                     ]);
                     $added++;
                 }
             }
-            echo '<div class="notice notice-success"><p>' . $added . ' participants added successfully!</p></div>';
+            ofst_cert_toast($added . ' participants added successfully!', 'success');
         }
     }
 
-    // Handle CSV Upload
+    // Handle File Upload - supports CSV, TXT, and XLSX (Excel)
     if (isset($_POST['csv_upload']) && check_admin_referer('csv_upload_nonce') && !empty($_FILES['csv_file']['tmp_name'])) {
         $event_id = absint($_POST['csv_event_id']);
+        $file_path = $_FILES['csv_file']['tmp_name'];
+        $file_name = $_FILES['csv_file']['name'];
+        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
-        if ($event_id && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
-            $file_content = file_get_contents($_FILES['csv_file']['tmp_name']);
-            $lines = array_filter(array_map('trim', explode("\n", $file_content)));
+        if ($event_id && is_uploaded_file($file_path)) {
+            $lines = [];
+
+            // Handle XLSX (Excel) files
+            if ($file_ext === 'xlsx' && class_exists('ZipArchive')) {
+                $zip = new ZipArchive();
+                if ($zip->open($file_path) === true) {
+                    // Read shared strings (cell values)
+                    $shared_strings = [];
+                    $strings_xml = $zip->getFromName('xl/sharedStrings.xml');
+                    if ($strings_xml) {
+                        $xml = simplexml_load_string($strings_xml);
+                        foreach ($xml->si as $si) {
+                            $shared_strings[] = (string)$si->t;
+                        }
+                    }
+
+                    // Read first worksheet
+                    $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+                    if ($sheet_xml) {
+                        $xml = simplexml_load_string($sheet_xml);
+                        foreach ($xml->sheetData->row as $row) {
+                            $row_data = [];
+                            foreach ($row->c as $cell) {
+                                $value = '';
+                                if (isset($cell->v)) {
+                                    $value = (string)$cell->v;
+                                    // Check if it's a shared string reference
+                                    if (isset($cell['t']) && (string)$cell['t'] === 's') {
+                                        $value = $shared_strings[(int)$value] ?? $value;
+                                    }
+                                }
+                                $row_data[] = $value;
+                            }
+                            if (!empty($row_data[0])) {
+                                // Format: name,email or just name
+                                $lines[] = implode(',', array_slice($row_data, 0, 2));
+                            }
+                        }
+                    }
+                    $zip->close();
+                }
+            } else {
+                // Handle CSV/TXT files
+                $file_content = file_get_contents($file_path);
+                $lines = array_filter(array_map('trim', explode("\n", $file_content)));
+            }
+
             $added = 0;
+            $skip_headers = ['name', 'full name', 'email', 'full_name', 'participant', 'attendee'];
 
             foreach ($lines as $line) {
-                $name = sanitize_text_field($line);
-                if (!empty($name) && $name !== 'Name' && $name !== 'Full Name') { // Skip header
+                // Check if line has comma (name,email format)
+                if (strpos($line, ',') !== false) {
+                    $parts = array_map('trim', explode(',', $line, 2));
+                    $name = sanitize_text_field($parts[0]);
+                    $email = isset($parts[1]) ? sanitize_email($parts[1]) : '';
+                } else {
+                    $name = sanitize_text_field($line);
+                    $email = '';
+                }
+
+                // Skip header rows
+                if (!empty($name) && !in_array(strtolower($name), $skip_headers)) {
                     $wpdb->insert($participants_table, [
                         'event_date_id' => $event_id,
                         'full_name' => $name,
+                        'email' => $email ?: null,
                         'added_date' => current_time('mysql'),
                         'added_by' => get_current_user_id()
                     ]);
                     $added++;
                 }
             }
-            echo '<div class="notice notice-success"><p>' . $added . ' participants imported from CSV!</p></div>';
+            ofst_cert_toast($added . ' participants imported!', 'success');
         }
     }
 
@@ -1304,7 +1835,7 @@ function ofst_cert_participants_page()
         $id = absint($_GET['remove_participant']);
         if (wp_verify_nonce($_GET['_wpnonce'], 'remove_participant_' . $id)) {
             $wpdb->delete($participants_table, ['id' => $id]);
-            echo '<div class="notice notice-success"><p>Participant removed.</p></div>';
+            ofst_cert_toast('Participant removed.', 'success');
         }
     }
 
@@ -1333,148 +1864,157 @@ function ofst_cert_participants_page()
         WHERE e.is_active = 1
         ORDER BY e.event_date DESC
     ");
-?>
-    <div class="wrap">
-        <h1>Event Participants Roster</h1>
-        <p>Upload participant names before the event. Names auto-remove when certificates are issued.</p>
+    ?>
+        <div class="wrap">
+            <h1>Event Participants Roster</h1>
+            <p>Upload participant names before the event. Names auto-remove when certificates are issued.</p>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-            <!-- Single Add Form -->
-            <div class="card" style="padding: 20px;">
-                <h3 style="margin-top: 0;">Add Single Participant</h3>
-                <form method="post">
-                    <?php wp_nonce_field('add_participant_nonce'); ?>
-                    <table class="form-table">
-                        <tr>
-                            <th><label>Event</label></th>
-                            <td>
-                                <select name="event_date_id" required style="width: 100%;">
-                                    <option value="">-- Select Event --</option>
-                                    <?php foreach ($events as $evt): ?>
-                                        <option value="<?php echo $evt->id; ?>">
-                                            <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name . ' (' . date('M d, Y', strtotime($evt->event_date)) . ')'); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><label>Full Name</label></th>
-                            <td>
-                                <input type="text" name="participant_name" required style="width: 100%;" placeholder="John Doe">
-                            </td>
-                        </tr>
-                    </table>
-                    <button type="submit" name="add_participant" class="button button-primary">Add Participant</button>
-                </form>
-            </div>
-
-            <!-- Bulk Add Form -->
-            <div class="card" style="padding: 20px;">
-                <h3 style="margin-top: 0;">Bulk Add (Paste Names)</h3>
-                <form method="post">
-                    <?php wp_nonce_field('bulk_add_nonce'); ?>
-                    <table class="form-table">
-                        <tr>
-                            <th><label>Event</label></th>
-                            <td>
-                                <select name="bulk_event_id" required style="width: 100%;">
-                                    <option value="">-- Select Event --</option>
-                                    <?php foreach ($events as $evt): ?>
-                                        <option value="<?php echo $evt->id; ?>">
-                                            <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name . ' (' . date('M d, Y', strtotime($evt->event_date)) . ')'); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th><label>Names (one per line)</label></th>
-                            <td>
-                                <textarea name="bulk_names" rows="5" style="width: 100%;" placeholder="John Doe
-Jane Smith
-Mike Johnson"></textarea>
-                            </td>
-                        </tr>
-                    </table>
-                    <button type="submit" name="bulk_add_participants" class="button button-primary">Add All Names</button>
-                </form>
-            </div>
-        </div>
-
-        <!-- CSV Upload -->
-        <div class="card" style="padding: 20px; margin-bottom: 20px;">
-            <h3 style="margin-top: 0;">Upload CSV File</h3>
-            <form method="post" enctype="multipart/form-data">
-                <?php wp_nonce_field('csv_upload_nonce'); ?>
-                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                    <select name="csv_event_id" required>
-                        <option value="">-- Select Event --</option>
-                        <?php foreach ($events as $evt): ?>
-                            <option value="<?php echo $evt->id; ?>">
-                                <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <input type="file" name="csv_file" accept=".csv,.txt" required>
-                    <button type="submit" name="csv_upload" class="button button-secondary">Upload CSV</button>
-                    <small>Format: One name per line</small>
+            <div class="ofst-participant-grid">
+                <!-- Single Add Form -->
+                <div class="card" style="padding: 20px;">
+                    <h3 style="margin-top: 0;">Add Single Participant</h3>
+                    <form method="post">
+                        <?php wp_nonce_field('add_participant_nonce'); ?>
+                        <table class="form-table">
+                            <tr>
+                                <th><label>Event</label></th>
+                                <td>
+                                    <select name="event_date_id" required style="width: 100%;">
+                                        <option value="">-- Select Event --</option>
+                                        <?php foreach ($events as $evt): ?>
+                                            <option value="<?php echo $evt->id; ?>">
+                                                <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name . ' (' . date('M d, Y', strtotime($evt->event_date)) . ')'); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label>Full Name</label></th>
+                                <td>
+                                    <input type="text" name="participant_name" required style="width: 100%;" placeholder="John Doe">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label>Email (Optional)</label></th>
+                                <td>
+                                    <input type="email" name="participant_email" style="width: 100%;" placeholder="john@example.com">
+                                </td>
+                            </tr>
+                        </table>
+                        <button type="submit" name="add_participant" class="button button-primary">Add Participant</button>
+                    </form>
                 </div>
-            </form>
-        </div>
 
-        <!-- Filter -->
-        <form method="get" style="margin-bottom: 15px;">
-            <input type="hidden" name="page" value="ofst-participants">
-            <select name="filter_event" onchange="this.form.submit()">
-                <option value="">-- All Events --</option>
-                <?php foreach ($events as $evt): ?>
-                    <option value="<?php echo $evt->id; ?>" <?php selected($filter_event, $evt->id); ?>>
-                        <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </form>
+                <!-- Bulk Add Form -->
+                <div class="card" style="padding: 20px;">
+                    <h3 style="margin-top: 0;">Bulk Add (Paste Names)</h3>
+                    <form method="post">
+                        <?php wp_nonce_field('bulk_add_nonce'); ?>
+                        <table class="form-table">
+                            <tr>
+                                <th><label>Event</label></th>
+                                <td>
+                                    <select name="bulk_event_id" required style="width: 100%;">
+                                        <option value="">-- Select Event --</option>
+                                        <?php foreach ($events as $evt): ?>
+                                            <option value="<?php echo $evt->id; ?>">
+                                                <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name . ' (' . date('M d, Y', strtotime($evt->event_date)) . ')'); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label>Names (one per line)</label></th>
+                                <td>
+                                    <textarea name="bulk_names" rows="5" style="width: 100%;" placeholder="John Doe, john@example.com
+Jane Smith, jane@example.com
+Mike Johnson"></textarea>
+                                    <small style="color: #666;">Format: <code>Name</code> or <code>Name, email</code></small>
+                                </td>
+                            </tr>
+                        </table>
+                        <button type="submit" name="bulk_add_participants" class="button button-primary">Add All Names</button>
+                    </form>
+                </div>
+            </div>
 
-        <!-- Participants Table -->
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th style="width: 30%;">Name</th>
-                    <th>Event</th>
-                    <th>Institution</th>
-                    <th style="width: 15%;">Added</th>
-                    <th style="width: 80px;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($participants)): ?>
-                    <tr>
-                        <td colspan="5">No participants added yet.</td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($participants as $p): ?>
-                        <tr>
-                            <td><strong><?php echo esc_html($p->full_name); ?></strong></td>
-                            <td><?php echo esc_html($p->event_name ?: '-'); ?></td>
-                            <td><?php echo esc_html($p->institution_name ?: '-'); ?></td>
-                            <td><?php echo date('M d, Y', strtotime($p->added_date)); ?></td>
-                            <td>
-                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-participants&remove_participant=' . $p->id), 'remove_participant_' . $p->id); ?>"
-                                    onclick="return confirm('Remove this participant?');"
-                                    style="color: red;">Remove</a>
-                            </td>
-                        </tr>
+            <!-- File Upload -->
+            <div class="card ofst-participant-upload" style="padding: 20px; margin-bottom: 20px;">
+                <h3 style="margin-top: 0;">Upload File (CSV, TXT, or Excel)</h3>
+                <form method="post" enctype="multipart/form-data">
+                    <?php wp_nonce_field('csv_upload_nonce'); ?>
+                    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                        <select name="csv_event_id" required>
+                            <option value="">-- Select Event --</option>
+                            <?php foreach ($events as $evt): ?>
+                                <option value="<?php echo $evt->id; ?>">
+                                    <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="file" name="csv_file" accept=".csv,.txt,.xlsx" required>
+                        <button type="submit" name="csv_upload" class="button button-secondary">Upload File</button>
+                        <small>Supports: <code>.csv</code>, <code>.txt</code>, <code>.xlsx</code> | Columns: Name, Email (optional)</small>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Filter -->
+            <form method="get" style="margin-bottom: 15px;">
+                <input type="hidden" name="page" value="ofst-participants">
+                <select name="filter_event" onchange="this.form.submit()">
+                    <option value="">-- All Events --</option>
+                    <?php foreach ($events as $evt): ?>
+                        <option value="<?php echo $evt->id; ?>" <?php selected($filter_event, $evt->id); ?>>
+                            <?php echo esc_html($evt->institution_name . ' - ' . $evt->event_name); ?>
+                        </option>
                     <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
+                </select>
+            </form>
 
-        <?php if (!empty($participants)): ?>
-            <p style="color: #666; margin-top: 10px;">
-                <strong><?php echo count($participants); ?></strong> participant(s) pending certificates.
-            </p>
-        <?php endif; ?>
-    </div>
-<?php
+            <!-- Participants Table -->
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Name</th>
+                        <th style="width: 20%;">Email</th>
+                        <th>Event</th>
+                        <th>Institution</th>
+                        <th style="width: 12%;">Added</th>
+                        <th style="width: 80px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($participants)): ?>
+                        <tr>
+                            <td colspan="6">No participants added yet.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($participants as $p): ?>
+                            <tr>
+                                <td><strong><?php echo esc_html($p->full_name); ?></strong></td>
+                                <td><?php echo $p->email ? esc_html($p->email) : '<span style="color:#999;">-</span>'; ?></td>
+                                <td><?php echo esc_html($p->event_name ?: '-'); ?></td>
+                                <td><?php echo esc_html($p->institution_name ?: '-'); ?></td>
+                                <td><?php echo date('M d, Y', strtotime($p->added_date)); ?></td>
+                                <td>
+                                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-participants&remove_participant=' . $p->id), 'remove_participant_' . $p->id); ?>"
+                                        onclick="return confirm('Remove this participant?');"
+                                        style="color: red;">Remove</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <?php if (!empty($participants)): ?>
+                <p style="color: #666; margin-top: 10px;">
+                    <strong><?php echo count($participants); ?></strong> participant(s) pending certificates.
+                </p>
+            <?php endif; ?>
+        </div>
+    <?php
 }

@@ -2,7 +2,7 @@
 
 /**
  * Shortcodes for Certificate System
- * Contains: Student Request, Vendor Request, Verification, My Certificates
+ * Contains: Student Request, Verification, My Certificates
  */
 
 if (!defined('ABSPATH')) exit;
@@ -524,26 +524,32 @@ function ofst_cert_process_student_request()
             wp_die('Please select an institution and event date.');
         }
 
-        // Validate participant is in roster
+        // Validate participant is in roster (match by name OR email)
+        global $wpdb;
         $full_name = trim($first_name . ' ' . $last_name);
         $participants_table = $wpdb->prefix . 'ofst_cert_event_participants';
 
+        // Check if participant exists by name OR email
         $participant = $wpdb->get_row($wpdb->prepare(
             "SELECT id FROM $participants_table 
              WHERE event_date_id = %d 
-             AND LOWER(TRIM(full_name)) = LOWER(TRIM(%s))",
+             AND (
+                 LOWER(TRIM(full_name)) = LOWER(TRIM(%s))
+                 OR (email IS NOT NULL AND email != '' AND LOWER(TRIM(email)) = LOWER(TRIM(%s)))
+             )",
             $event_date_id,
-            $full_name
+            $full_name,
+            $email
         ));
 
         if (!$participant) {
             wp_die(
                 '<h2>Unable to Verify Attendance</h2>' .
-                    '<p>Your name was not found in the participant list for this event.</p>' .
+                    '<p>Your name or email was not found in the participant list for this event.</p>' .
                     '<p><strong>Please ensure:</strong></p>' .
                     '<ul>' .
                     '<li>You actually attended this event</li>' .
-                    '<li>Your name is spelled exactly as on the registration</li>' .
+                    '<li>Your name or email matches your registration</li>' .
                     '</ul>' .
                     '<p>If you believe this is an error, please contact ' . esc_html(ofst_cert_get_setting('support_email')) . '</p>' .
                     '<p><a href="javascript:history.back()">← Go Back</a></p>',

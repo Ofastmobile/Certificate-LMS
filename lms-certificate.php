@@ -4,7 +4,7 @@
  * Plugin Name: OFAST Certificate Management System
  * Plugin URI: https://ofastshop.com
  * Description: Complete certificate management system for WooCommerce courses with student/vendor requests, verification, and HTML certificate generation
- * Version: 1.0.0
+ * Version: 2.0.0
  * Author: Ofastshop Digitals
  * Author URI: https://ofastshop.com
  * Text Domain: ofast-certificate
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants  
-define('OFST_CERT_VERSION', '1.0.0');
+define('OFST_CERT_VERSION', '2.0.0');
 define('OFST_CERT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('OFST_CERT_PLUGIN_URL', plugin_dir_url(__FILE__));
 
