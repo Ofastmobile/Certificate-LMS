@@ -136,16 +136,24 @@ function ofst_cert_send_vendor_notification($vendor_id, $student_name, $course, 
 }
 
 /**
- * Send certificate to student after approval - SIMPLIFIED VERSION
- * Plain format like the working confirmation email
+ * Send certificate to student after approval - FIXED VERSION
+ * Simple pattern matching the working confirmation email
  */
 function ofst_cert_send_certificate_email($request)
 {
-    $subject = 'Your Certificate is Ready! - ' . ofst_cert_get_setting('company_name');
+    $subject = 'Your Certificate is Ready - ' . ofst_cert_get_setting('company_name');
 
     $student_name = $request->first_name . ' ' . $request->last_name;
-    $course_name = $request->product_name ?: 'Your Course';
+    
+    // CRITICAL FIX: Get course/event name based on template type
+    if ($request->template_type === 'cromemart') {
+        $course_name = $request->event_theme ?: ($request->event_name ?: 'Event Participation');
+    } else {
+        $course_name = $request->product_name ?: 'Course Completion';
+    }
+    
     $dashboard_url = site_url('/my-certificates/');
+    $company_name = ofst_cert_get_setting('company_name');
 
     $message = "
     <html>
@@ -175,7 +183,7 @@ function ofst_cert_send_certificate_email($request)
             <p>Keep this certificate safe for your records.</p>
             
             <p>Best regards,<br>
-            " . ofst_cert_get_setting('company_name') . "</p>
+            {$company_name}</p>
         </div>
     </body>
     </html>
@@ -186,19 +194,28 @@ function ofst_cert_send_certificate_email($request)
         'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
     );
 
-    // No attachments - just direct to dashboard
     return wp_mail($request->email, $subject, $message, $headers);
 }
 
 /**
- * Send rejection email to student - SIMPLIFIED VERSION
+ * Send rejection email to student - FIXED VERSION
+ * Simple pattern matching the working confirmation email
  */
 function ofst_cert_send_rejection_email($request, $reason)
 {
     $subject = 'Certificate Request Update - ' . ofst_cert_get_setting('company_name');
 
     $student_name = $request->first_name . ' ' . $request->last_name;
-    $course_name = $request->product_name ?: 'Your Course';
+    
+    // CRITICAL FIX: Get course/event name based on template type
+    if ($request->template_type === 'cromemart') {
+        $course_name = $request->event_theme ?: ($request->event_name ?: 'Event Participation');
+    } else {
+        $course_name = $request->product_name ?: 'Course Completion';
+    }
+
+    $support_email = ofst_cert_get_setting('support_email');
+    $company_name = ofst_cert_get_setting('company_name');
 
     $message = "
     <html>
@@ -216,10 +233,10 @@ function ofst_cert_send_rejection_email($request, $reason)
                 <strong>Reason:</strong> {$reason}
             </div>
             
-            <p>If you believe this is an error or have questions, please contact us at " . ofst_cert_get_setting('support_email') . "</p>
+            <p>If you believe this is an error or have questions, please contact us at {$support_email}</p>
             
             <p>Best regards,<br>
-            " . ofst_cert_get_setting('company_name') . "</p>
+            {$company_name}</p>
         </div>
     </body>
     </html>
