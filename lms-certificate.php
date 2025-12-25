@@ -257,7 +257,7 @@ add_action('admin_init', 'ofst_cert_check_db_version');
 function ofst_cert_check_db_version()
 {
     $current_db_version = get_option('ofst_cert_db_version', '1.0');
-    $required_db_version = '2.4'; // Increment this when making DB changes
+    $required_db_version = '2.5'; // Increment this when making DB changes
 
     if (version_compare($current_db_version, $required_db_version, '<')) {
         // Run all migrations
@@ -656,8 +656,15 @@ function ofst_cert_retry_email($request_id)
 {
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
-    $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
+    // Join event table for Cromemart event_theme in email
+    $request = $wpdb->get_row($wpdb->prepare("
+        SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r 
+        LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        WHERE r.id = %d
+    ", $request_id));
 
     if (!$request || empty($request->certificate_file)) {
         return ['success' => false, 'error' => 'Certificate file not found'];

@@ -143,6 +143,55 @@ function ofst_cert_admin_styles($hook)
             grid-template-columns: 1fr;
         }
     }
+    
+    /* Certificate Modal */
+    .ofst-cert-modal {
+        position: fixed;
+        z-index: 100000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+    .ofst-cert-modal-content {
+        background-color: #fff;
+        margin: 2% auto;
+        padding: 30px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 700px;
+        max-height: 90vh;
+        overflow-y: auto;
+        border-radius: 8px;
+    }
+    .ofst-cert-modal-close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .ofst-cert-modal-close:hover {
+        color: #000;
+    }
+    
+    /* Certificate Type Badges */
+    .cert-type-badge {
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .cert-type-badge.ofastshop {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    .cert-type-badge.cromemart {
+        background: #fff3e0;
+        color: #f57c00;
+    }
     ';
     wp_add_inline_style('wp-admin', $css);
 
@@ -383,9 +432,10 @@ function ofst_cert_admin_dashboard()
 
     // Get all pending requests with event theme for Cromemart certificates
     $requests = $wpdb->get_results("
-        SELECT r.*, e.event_theme, e.event_name 
+        SELECT r.*, e.event_theme, e.event_name, e.event_date, i.institution_name 
         FROM $table r 
         LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
         WHERE r.status = 'pending' 
         ORDER BY r.requested_date DESC
     ");
@@ -451,7 +501,7 @@ function ofst_cert_admin_dashboard()
                                     </td>
                                     <td><?php echo date('M d, Y', strtotime($req->requested_date)); ?></td>
                                     <td>
-                                        <a href="?page=ofst-certificates&action=view&cert_id=<?php echo $req->id; ?>" class="button button-small">View</a>
+                                        <button type="button" class="button button-small" onclick="openPendingModal(<?php echo $req->id; ?>)">View</button>
                                         <a href="#"
                                             class="button button-small reject-btn"
                                             data-cert-id="<?php echo $req->id; ?>"
@@ -462,113 +512,100 @@ function ofst_cert_admin_dashboard()
                         </tbody>
                     </table>
             </form>
-        <?php endif; ?>
 
-        <!-- View Details Modal -->
-        <?php if (isset($_GET['action']) && $_GET['action'] === 'view' && isset($_GET['cert_id'])):
-            $cert_id = absint($_GET['cert_id']);
-            // Get certificate with event data for Cromemart
-            $cert = $wpdb->get_row($wpdb->prepare("
-                SELECT r.*, e.event_theme, e.event_name, i.institution_name 
-                FROM $table r 
-                LEFT JOIN $event_table e ON r.event_date_id = e.id 
-                LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
-                WHERE r.id = %d
-            ", $cert_id));
-            if ($cert):
-        ?>
-                <div class="ofst-cert-modal" style="display:block;">
+            <!-- Hidden Modals for Each Pending Certificate -->
+            <?php foreach ($requests as $req): 
+                $instructor_name = ofst_cert_get_instructor_name($req->product_id, $req->vendor_id);
+            ?>
+                <div id="pending-modal-<?php echo $req->id; ?>" class="ofst-cert-modal" style="display:none;">
                     <div class="ofst-cert-modal-content">
-                        <span class="ofst-cert-modal-close" onclick="window.location.href='?page=ofst-certificates'">&times;</span>
+                        <span class="ofst-cert-modal-close" onclick="closePendingModal(<?php echo $req->id; ?>)">&times;</span>
                         <h2>Certificate Request Details</h2>
 
                         <table class="form-table">
                             <tr>
                                 <th>Certificate ID:</th>
-                                <td><?php echo esc_html($cert->certificate_id); ?></td>
+                                <td><?php echo esc_html($req->certificate_id); ?></td>
                             </tr>
                             <tr>
                                 <th>Request Type:</th>
-                                <td><?php echo ucfirst($cert->request_type); ?></td>
+                                <td><?php echo ucfirst($req->request_type); ?></td>
                             </tr>
                             <tr>
                                 <th>Student Name:</th>
-                                <td><?php echo esc_html($cert->first_name . ' ' . $cert->last_name); ?></td>
+                                <td><?php echo esc_html($req->first_name . ' ' . $req->last_name); ?></td>
                             </tr>
                             <tr>
                                 <th>Email:</th>
-                                <td><?php echo esc_html($cert->email); ?></td>
+                                <td><?php echo esc_html($req->email); ?></td>
                             </tr>
                             <tr>
                                 <th>Phone:</th>
-                                <td><?php echo esc_html($cert->phone); ?></td>
+                                <td><?php echo esc_html($req->phone); ?></td>
                             </tr>
-                            <?php if ($cert->template_type === 'cromemart'): ?>
+                            <?php if ($req->template_type === 'cromemart'): ?>
                                 <tr>
                                     <th>Institution:</th>
-                                    <td><?php echo esc_html($cert->institution_name ?: '-'); ?></td>
+                                    <td><?php echo esc_html($req->institution_name ?? '-'); ?></td>
                                 </tr>
                                 <tr>
                                     <th>Event:</th>
-                                    <td><?php echo esc_html($cert->event_name ?: '-'); ?></td>
+                                    <td><?php echo esc_html($req->event_name ?: '-'); ?></td>
                                 </tr>
                                 <tr>
                                     <th>Course:</th>
-                                    <td><?php echo esc_html($cert->event_theme ?: '-'); ?></td>
+                                    <td><?php echo esc_html($req->event_theme ?: '-'); ?></td>
                                 </tr>
                             <?php else: ?>
                                 <tr>
                                     <th>Course:</th>
-                                    <td><?php echo esc_html($cert->product_name ?: '-'); ?></td>
+                                    <td><?php echo esc_html($req->product_name ?: '-'); ?></td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($cert->instructor_name): ?>
+                            <?php if ($req->instructor_name): ?>
                                 <tr>
                                     <th>Instructor:</th>
-                                    <td><?php echo esc_html($cert->instructor_name); ?></td>
+                                    <td><?php echo esc_html($req->instructor_name); ?></td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($cert->project_link): ?>
+                            <?php if ($req->project_link): ?>
                                 <tr>
                                     <th>Project Link:</th>
-                                    <td><a href="<?php echo esc_url($cert->project_link); ?>" target="_blank"><?php echo esc_html($cert->project_link); ?></a></td>
+                                    <td><a href="<?php echo esc_url($req->project_link); ?>" target="_blank"><?php echo esc_html($req->project_link); ?></a></td>
                                 </tr>
                             <?php endif; ?>
-                            <?php if ($cert->vendor_notes): ?>
+                            <?php if ($req->vendor_notes): ?>
                                 <tr>
                                     <th>Vendor Notes:</th>
-                                    <td><?php echo esc_html($cert->vendor_notes); ?></td>
+                                    <td><?php echo esc_html($req->vendor_notes); ?></td>
                                 </tr>
                             <?php endif; ?>
                             <tr>
                                 <th>Requested Date:</th>
-                                <td><?php echo date('F d, Y g:i A', strtotime($cert->requested_date)); ?></td>
+                                <td><?php echo date('F d, Y g:i A', strtotime($req->requested_date)); ?></td>
                             </tr>
                         </table>
 
                         <h3>🎨 Generate & Issue Certificate</h3>
-                        <form id="approve-cert-form" method="post">
-                            <?php wp_nonce_field('ofst_cert_approve_' . $cert->id); ?>
+                        <form method="post">
+                            <?php wp_nonce_field('ofst_cert_approve_' . $req->id); ?>
                             <input type="hidden" name="ofst_approve_cert" value="1">
-                            <input type="hidden" name="cert_id" value="<?php echo $cert->id; ?>">
+                            <input type="hidden" name="cert_id" value="<?php echo $req->id; ?>">
 
                             <table class="form-table">
                                 <tr>
                                     <th>Completion Date:</th>
                                     <td>
-                                        <input type="date" name="completion_date" id="completion_date"
-                                            value="<?php echo $cert->completion_date ? esc_attr($cert->completion_date) : date('Y-m-d'); ?>"
+                                        <input type="date" name="completion_date"
+                                            value="<?php echo $req->completion_date ? esc_attr($req->completion_date) : date('Y-m-d'); ?>"
                                             required>
-                                        <p class="description">Date to show on the certificate (when the student completed the course).</p>
+                                        <p class="description">Date to show on the certificate.</p>
                                     </td>
                                 </tr>
                                 <tr>
                                     <th>Instructor:</th>
                                     <td>
-                                        <?php
-                                        $instructor_name = ofst_cert_get_instructor_name($cert->product_id, $cert->vendor_id);
-                                        echo '<strong>' . esc_html($instructor_name) . '</strong>';
-                                        ?>
+                                        <strong><?php echo esc_html($instructor_name); ?></strong>
                                         <p class="description">Auto-detected from course/product author.</p>
                                     </td>
                                 </tr>
@@ -581,9 +618,9 @@ function ofst_cert_admin_dashboard()
                                 </button>
                                 <a href="#"
                                     class="button button-large reject-btn"
-                                    data-cert-id="<?php echo $cert->id; ?>"
-                                    data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $cert->id); ?>">Reject Request</a>
-                                <a href="?page=ofst-certificates" class="button button-large">Close</a>
+                                    data-cert-id="<?php echo $req->id; ?>"
+                                    data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>">Reject Request</a>
+                                <button type="button" class="button button-large" onclick="closePendingModal(<?php echo $req->id; ?>)">Close</button>
                             </p>
                         </form>
 
@@ -592,11 +629,19 @@ function ofst_cert_admin_dashboard()
                         </div>
                     </div>
                 </div>
-        <?php endif;
-        endif; ?>
+            <?php endforeach; ?>
+
+        <?php endif; ?>
     </div>
 
     <script>
+        function openPendingModal(id) {
+            document.getElementById('pending-modal-' + id).style.display = 'block';
+        }
+        function closePendingModal(id) {
+            document.getElementById('pending-modal-' + id).style.display = 'none';
+        }
+
         document.getElementById('select-all')?.addEventListener('change', function() {
             document.querySelectorAll('.cert-checkbox').forEach(cb => cb.checked = this.checked);
         });
@@ -615,61 +660,16 @@ function ofst_cert_admin_dashboard()
                 }
             });
         });
+
+        // Close modal when clicking outside
+        document.querySelectorAll('.ofst-cert-modal').forEach(function(modal) {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.style.display = 'none';
+                }
+            });
+        });
     </script>
-
-    <style>
-        .cert-type-badge {
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .cert-type-badge.ofastshop {
-            background: #e3f2fd;
-            color: #1976d2;
-        }
-
-        .cert-type-badge.cromemart {
-            background: #fff3e0;
-            color: #f57c00;
-        }
-
-        .ofst-cert-modal {
-            position: fixed;
-            z-index: 100000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-
-        .ofst-cert-modal-content {
-            background-color: #fff;
-            margin: 2% auto;
-            padding: 30px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 700px;
-            max-height: 90vh;
-            overflow-y: auto;
-            border-radius: 8px;
-        }
-
-        .ofst-cert-modal-close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .ofst-cert-modal-close:hover {
-            color: #000;
-        }
-    </style>
 <?php
 }
 
@@ -728,8 +728,14 @@ function ofst_cert_approve_request($request_id, $completion_date = null)
         ['id' => $request_id]
     );
 
-    // Get updated request data for email
-    $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
+    // Get updated request data for email (join event table for Cromemart event_theme)
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
+    $request = $wpdb->get_row($wpdb->prepare("
+        SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r 
+        LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        WHERE r.id = %d
+    ", $request_id));
 
     // V2.3: Auto-remove from participants roster (for Cromemart certificates)
     if ($request->template_type === 'cromemart' && !empty($request->event_date_id)) {
@@ -809,9 +815,10 @@ function ofst_cert_issued_page()
 
     // Get issued certificates with event theme for Cromemart
     $certificates = $wpdb->get_results("
-        SELECT r.*, e.event_theme, e.event_name 
+        SELECT r.*, e.event_theme, e.event_name, e.event_date, i.institution_name 
         FROM $table r 
         LEFT JOIN $event_table e ON r.event_date_id = e.id 
+        LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
         WHERE r.status = 'issued' 
         ORDER BY r.processed_date DESC 
         LIMIT 100
@@ -1053,7 +1060,7 @@ function ofst_cert_rejected_page()
 
     // Get rejected certificates with event data
     $rejected = $wpdb->get_results("
-        SELECT r.*, e.event_theme, e.event_name, i.institution_name 
+        SELECT r.*, e.event_theme, e.event_name, e.event_date, i.institution_name 
         FROM $table r 
         LEFT JOIN $event_table e ON r.event_date_id = e.id 
         LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
@@ -1106,8 +1113,7 @@ function ofst_cert_rejected_page()
                             </td>
                             <td><?php echo $cert->processed_date ? date('M d, Y', strtotime($cert->processed_date)) : '-'; ?></td>
                             <td>
-                                <a href="?page=ofst-certificates-rejected&action=view&cert_id=<?php echo $cert->id; ?>"
-                                    class="button button-small">View Details</a>
+                                <button type="button" class="button button-small" onclick="openRejectedModal(<?php echo $cert->id; ?>)">View Details</button>
                                 <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-certificates-rejected&delete_rejected=' . $cert->id), 'delete_rejected_' . $cert->id); ?>"
                                     onclick="return confirm('Permanently delete this rejected request?');"
                                     class="button button-small" style="color: #a00;">Delete</a>
@@ -1116,23 +1122,12 @@ function ofst_cert_rejected_page()
                     <?php endforeach; ?>
                 </tbody>
             </table>
-        <?php endif; ?>
 
-        <!-- View Details Modal -->
-        <?php if (isset($_GET['action']) && $_GET['action'] === 'view' && isset($_GET['cert_id'])):
-            $cert_id = absint($_GET['cert_id']);
-            $cert = $wpdb->get_row($wpdb->prepare("
-                SELECT r.*, e.event_theme, e.event_name, e.event_date, i.institution_name 
-                FROM $table r 
-                LEFT JOIN $event_table e ON r.event_date_id = e.id 
-                LEFT JOIN {$wpdb->prefix}ofst_cert_institutions i ON r.institution_id = i.id
-                WHERE r.id = %d
-            ", $cert_id));
-            if ($cert):
-        ?>
-                <div class="ofst-cert-modal" style="display:block;">
+            <!-- Hidden Modals for Each Certificate -->
+            <?php foreach ($rejected as $cert): ?>
+                <div id="rejected-modal-<?php echo $cert->id; ?>" class="ofst-cert-modal" style="display:none;">
                     <div class="ofst-cert-modal-content">
-                        <span class="ofst-cert-modal-close" onclick="window.location.href='?page=ofst-certificates-rejected'">&times;</span>
+                        <span class="ofst-cert-modal-close" onclick="closeRejectedModal(<?php echo $cert->id; ?>)">&times;</span>
                         <h2>Rejected Certificate Details</h2>
 
                         <div style="background: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
@@ -1179,10 +1174,6 @@ function ofst_cert_rejected_page()
                                     <th>Product</th>
                                     <td><?php echo esc_html($cert->product_name ?: '-'); ?></td>
                                 </tr>
-                                <tr>
-                                    <th>Order ID</th>
-                                    <td><?php echo esc_html($cert->order_id ?: '-'); ?></td>
-                                </tr>
                             <?php endif; ?>
                             <tr>
                                 <th>Rejected On</th>
@@ -1190,7 +1181,7 @@ function ofst_cert_rejected_page()
                             </tr>
                             <tr>
                                 <th>Requested On</th>
-                                <td><?php echo date('M d, Y g:i A', strtotime($cert->submitted_date)); ?></td>
+                                <td><?php echo $cert->requested_date ? date('M d, Y g:i A', strtotime($cert->requested_date)) : '-'; ?></td>
                             </tr>
                         </table>
 
@@ -1212,13 +1203,30 @@ function ofst_cert_rejected_page()
                                 <button type="submit" name="reapprove_cert" class="button button-primary">
                                     ✓ Approve & Generate Certificate
                                 </button>
-                                <a href="?page=ofst-certificates-rejected" class="button">Cancel</a>
+                                <button type="button" class="button" onclick="closeRejectedModal(<?php echo $cert->id; ?>)">Cancel</button>
                             </p>
                         </form>
                     </div>
                 </div>
-        <?php endif;
-        endif; ?>
+            <?php endforeach; ?>
+
+            <script>
+            function openRejectedModal(id) {
+                document.getElementById('rejected-modal-' + id).style.display = 'block';
+            }
+            function closeRejectedModal(id) {
+                document.getElementById('rejected-modal-' + id).style.display = 'none';
+            }
+            // Close modal when clicking outside
+            document.querySelectorAll('.ofst-cert-modal').forEach(function(modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        this.style.display = 'none';
+                    }
+                });
+            });
+            </script>
+        <?php endif; ?>
     </div>
 <?php
 }

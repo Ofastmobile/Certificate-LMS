@@ -1,0 +1,45 @@
+Return-path: <support@ofastshop.com>
+Received: from ofaskcjb by server313.web-hosting.com with local (Exim 4.98.2)
+	(envelope-from <support@ofastshop.com>)
+	id 1vYQGz-00000006o4q-2TJ4
+	for olabodeoluwaseun@gmail.com;
+	Wed, 24 Dec 2025 09:55:33 -0500
+To: olabodeoluwaseun@gmail.com
+Subject: Your Certificate is Ready! - Ofastshop Digitals
+X-Mailer: Postman SMTP 3.6.3 for WordPress (https://wordpress.org/plugins/post-smtp/)
+Content-Type: text/html; charset=UTF-8
+From: Ofastshop Digitals <support@ofastshop.com>
+Reply-To: support@ofastshop.com
+Message-Id: <b52a14e74300c0826e23a089f2b64e24@bofastworld.net>
+Date: Wed, 24 Dec 2025 14:55:33 +0000
+Content-Transfer-Encoding: quoted-printable
+Content-Disposition: inline
+MIME-Version: 1.0
+Sender:  <ofaskcjb@server313.web-hosting.com>
+
+=0D=0A    <html>=0D=0A    <body style=3D'font-family: Arial, sans-serif;=
+ line-height: 1.6; color: #333;'>=0D=0A        <div style=3D'max-width:=
+ 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd;'>=0D=0A =
+           <h2 style=3D'color: #070244;'><img src=3D"https://s.w.org/ima=
+ges/core/emoji/17.0.2/72x72/1f389.png" alt=3D"=F0=9F=8E=89" class=3D"wp-=
+smiley" style=3D"height: 1em; max-height: 1em;" /> Congratulations!</h2>=
+=0D=0A            =0D=0A            <p>Dear Oluwa Seun,</p>=0D=0A      =
+      =0D=0A            <p>Your certificate has been approved and is now=
+ ready!</p>=0D=0A            =0D=0A            <div style=3D'background:=
+ #d4edda; padding: 15px; margin: 20px 0; border-left: 4px solid #28a745;=
+'>=0D=0A                <strong>Course:</strong> <br>=0D=0A            =
+    <strong>Certificate ID:</strong> OFSHDG2025010<br>=0D=0A           =
+     <strong>Issued Date:</strong> December 24, 2025=0D=0A            </=
+div>=0D=0A            <p><a href=3D'https://bofastworld.net/demo/wp-cont=
+ent/uploads/certificates/cromemart_OFSHDG2025010_53a711fd.html' =0D=0A =
+              style=3D'display: inline-block; padding: 12px 24px; backgr=
+ound: #070244; color: #fff; text-decoration: none; border-radius: 4px; f=
+ont-weight: bold;'>=0D=0A               View & Print Certificate=0D=0A =
+           </a></p>=0D=0A            <p>You can verify your certificate=
+ anytime at: <a href=3D'https://bofastworld.net/demo/verify-certificate'=
+>https://bofastworld.net/demo/verify-certificate</a></p>=0D=0A         =
+   =0D=0A            <p>Keep this certificate safe for your records.</p>=
+=0D=0A            =0D=0A            <p>Congratulations on your achieveme=
+nt!</p>=0D=0A            =0D=0A            <p>Best regards,<br>=0D=0A  =
+         Ofastshop Digitals</p>=0D=0A        </div>=0D=0A    </body>=0D=
+=0A    </html>=0D=0A
