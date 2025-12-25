@@ -136,48 +136,46 @@ function ofst_cert_send_vendor_notification($vendor_id, $student_name, $course, 
 }
 
 /**
- * Send certificate to student after approval
+ * Send certificate to student after approval - SIMPLIFIED VERSION
+ * Plain format like the working confirmation email
  */
 function ofst_cert_send_certificate_email($request)
 {
     $subject = 'Your Certificate is Ready! - ' . ofst_cert_get_setting('company_name');
 
     $student_name = $request->first_name . ' ' . $request->last_name;
+    $course_name = $request->product_name ?: 'Your Course';
+    $dashboard_url = site_url('/my-certificates/');
 
     $message = "
     <html>
     <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
         <div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd;'>
-            <h2 style='color: #070244;'>🎉 Congratulations!</h2>
+            <h2 style='color: #070244;'>Congratulations!</h2>
             
             <p>Dear {$student_name},</p>
             
             <p>Your certificate has been approved and is now ready!</p>
             
-            <div style='background: #d4edda; padding: 15px; margin: 20px 0; border-left: 4px solid #28a745;'>
-                <strong>Course:</strong> {$request->product_name}<br>
+            <div style='background: #f5f5f5; padding: 15px; margin: 20px 0; border-left: 4px solid #070244;'>
+                <strong>Course:</strong> {$course_name}<br>
                 <strong>Certificate ID:</strong> {$request->certificate_id}<br>
                 <strong>Issued Date:</strong> " . date('F d, Y') . "
-            </div>";
-
-    // Add view link if certificate file exists
-    if (!empty($request->certificate_file)) {
-        $message .= "
-            <p><a href='{$request->certificate_file}' 
-               style='display: inline-block; padding: 12px 24px; background: #070244; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold;'>
-               View & Print Certificate
-            </a></p>";
-    }
-
-    $message .= "
-            <p>You can verify your certificate anytime at: <a href='" . site_url('/verify-certificate') . "'>" . site_url('/verify-certificate') . "</a></p>
+            </div>
+            
+            <p>You can view and download your certificate from your dashboard:</p>
+            
+            <p><a href='{$dashboard_url}' 
+               style='display: inline-block; padding: 10px 20px; background: #070244; color: #fff; text-decoration: none; border-radius: 4px;'>
+               View My Certificate
+            </a></p>
+            
+            <p style='font-size: 13px; color: #666; margin-top: 15px;'><strong>Tip:</strong> For the best download experience, we recommend accessing your certificate from a PC or laptop.</p>
             
             <p>Keep this certificate safe for your records.</p>
             
-            <p>Congratulations on your achievement!</p>
-            
             <p>Best regards,<br>
-           " . ofst_cert_get_setting('company_name') . "</p>
+            " . ofst_cert_get_setting('company_name') . "</p>
         </div>
     </body>
     </html>
@@ -188,30 +186,19 @@ function ofst_cert_send_certificate_email($request)
         'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
     );
 
-    // Attach certificate file if it exists and is NOT an HTML file (only attach PDFs/Images if we ever switch back)
-    $attachments = array();
-    if (!empty($request->certificate_file)) {
-        // Convert URL to local path for attachment
-        $upload_dir = wp_upload_dir();
-        $local_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $request->certificate_file);
-
-        $ext = pathinfo($local_path, PATHINFO_EXTENSION);
-        if (file_exists($local_path) && strtolower($ext) !== 'html') {
-            $attachments[] = $local_path;
-        }
-    }
-
-    return wp_mail($request->email, $subject, $message, $headers, $attachments);
+    // No attachments - just direct to dashboard
+    return wp_mail($request->email, $subject, $message, $headers);
 }
 
 /**
- * Send rejection email to student
+ * Send rejection email to student - SIMPLIFIED VERSION
  */
 function ofst_cert_send_rejection_email($request, $reason)
 {
     $subject = 'Certificate Request Update - ' . ofst_cert_get_setting('company_name');
 
     $student_name = $request->first_name . ' ' . $request->last_name;
+    $course_name = $request->product_name ?: 'Your Course';
 
     $message = "
     <html>
@@ -223,8 +210,8 @@ function ofst_cert_send_rejection_email($request, $reason)
             
             <p>We regret to inform you that your certificate request could not be approved at this time.</p>
             
-            <div style='background: #fff3cd; padding: 15px; margin: 20px 0; border-left: 4px solid #856404;'>
-                <strong>Course:</strong> {$request->product_name}<br>
+            <div style='background: #f5f5f5; padding: 15px; margin: 20px 0; border-left: 4px solid #070244;'>
+                <strong>Course:</strong> {$course_name}<br>
                 <strong>Certificate ID:</strong> {$request->certificate_id}<br>
                 <strong>Reason:</strong> {$reason}
             </div>
@@ -261,13 +248,13 @@ function ofst_cert_notify_vendor_certificate_issued($request)
     <html>
     <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
         <div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd;'>
-            <h2 style='color: #28a745;'>Certificate Issued!</h2>
+            <h2 style='color: #070244;'>Certificate Issued!</h2>
             
             <p>Dear {$vendor->display_name},</p>
             
             <p>Great news! A certificate has been issued to a student for your course:</p>
             
-            <div style='background: #d4edda; padding: 15px; margin: 20px 0; border-left: 4px solid #28a745;'>
+            <div style='background: #f5f5f5; padding: 15px; margin: 20px 0; border-left: 4px solid #070244;'>
                 <strong>Student:</strong> {$student_name}<br>
                 <strong>Course:</strong> {$request->product_name}<br>
                 <strong>Certificate ID:</strong> {$request->certificate_id}<br>

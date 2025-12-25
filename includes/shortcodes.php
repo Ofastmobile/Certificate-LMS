@@ -393,9 +393,9 @@ function ofst_cert_process_student_request()
 
     $user_id = get_current_user_id();
 
-    // Rate limiting check
-    $ip = $_SERVER['REMOTE_ADDR'];
-    $rate_check = ofst_cert_check_rate_limit($ip, 'student_request', 5, 60);
+    // Rate limiting check - use user ID instead of IP to prevent blocking all users
+    $rate_identifier = 'user_' . $user_id;
+    $rate_check = ofst_cert_check_rate_limit($rate_identifier, 'student_request', 10, 60);
     if (!$rate_check['allowed']) {
         wp_die($rate_check['message']);
     }
