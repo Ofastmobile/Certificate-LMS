@@ -429,6 +429,22 @@ function ofst_cert_process_student_request()
         if (empty($institution_id) || empty($event_date_id)) {
             wp_die('Institution and Event Date are required for event certificates.');
         }
+        
+        // V2.5: Security - form email must match logged-in user's email
+        $user = wp_get_current_user();
+        $user_email = strtolower(trim($user->user_email));
+        $form_email = strtolower(trim(sanitize_email($_POST['email'])));
+        
+        if ($user_email !== $form_email) {
+            wp_die(
+                '<h2>Email Verification Failed</h2>' .
+                '<p>The email address you entered does not match your account email.</p>' .
+                '<p>For security, you can only request certificates using your registered email: <strong>' . esc_html($user->user_email) . '</strong></p>' .
+                '<p><a href="javascript:history.back()">← Go Back</a></p>',
+                'Email Mismatch',
+                ['back_link' => false]
+            );
+        }
     } else {
         // Ofastshop: Validate course fields
         $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
@@ -453,6 +469,27 @@ function ofst_cert_process_student_request()
         if ($duplicate) {
             $status_text = $duplicate->status === 'pending' ? 'pending review' : 'already issued';
             wp_die('You already have a certificate request for this course that is ' . $status_text . '. Please contact ' . ofst_cert_get_setting('support_email') . ' for assistance.');
+        }
+    }
+
+    // V2.5: Check for duplicate Cromemart requests (same user + same event)
+    if ($template_type === 'cromemart' && $event_date_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'ofst_cert_requests';
+        
+        // Check if this user already has a request for this event
+        $duplicate = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, status FROM $table 
+             WHERE user_id = %d 
+             AND event_date_id = %d 
+             AND status IN ('pending', 'issued')",
+            $user_id,
+            $event_date_id
+        ));
+        
+        if ($duplicate) {
+            $status_text = $duplicate->status === 'pending' ? 'pending review' : 'already issued';
+            wp_die('You already have a certificate request for this event that is ' . $status_text . '. Please contact ' . ofst_cert_get_setting('support_email') . ' for assistance.');
         }
     }
 
@@ -931,7 +968,25 @@ function ofst_cert_process_verification()
         echo '<p><strong>Issued:</strong> ' . esc_html(date('F d, Y', strtotime($cert->processed_date))) . '</p>';
 
         if ($is_owner && !empty($cert->certificate_file)) {
-            echo '<p><a href="' . esc_url($cert->certificate_file) . '" class="ofst-btn ofst-btn-primary" download>Download Certificate</a></p>';
+            echo '<p><button type="button" class="ofst-btn ofst-btn-primary" onclick="ofstDownloadCert(\'' . esc_url($cert->certificate_file) . '\', \'' . esc_attr($cert->certificate_id) . '.html\')">Download Certificate</button></p>';
+            echo '<script>
+            function ofstDownloadCert(url, filename) {
+                fetch(url)
+                    .then(response => response.blob())
+                    .then(blob => {
+                        const link = document.createElement("a");
+                        link.href = URL.createObjectURL(blob);
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(link.href);
+                    })
+                    .catch(() => {
+                        window.open(url, "_blank");
+                    });
+            }
+            </script>';
         }
         echo '</div></div>';
     } else {
