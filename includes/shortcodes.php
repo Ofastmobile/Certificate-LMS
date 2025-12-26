@@ -893,12 +893,15 @@ function ofst_cert_process_verification()
 
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
-    // Search by certificate ID or name
+    // Search by certificate ID or name - V2.5: JOIN event table for Cromemart
     $cert = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $table 
-        WHERE (certificate_id = %s OR CONCAT(first_name, ' ', last_name) LIKE %s OR email = %s)
-        AND status = 'issued'
+        "SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r
+        LEFT JOIN $event_table e ON r.event_date_id = e.id
+        WHERE (r.certificate_id = %s OR CONCAT(r.first_name, ' ', r.last_name) LIKE %s OR r.email = %s)
+        AND r.status = 'issued'
         LIMIT 1",
         $search,
         '%' . $wpdb->esc_like($search) . '%',
@@ -911,13 +914,20 @@ function ofst_cert_process_verification()
 
         $current_user_id = get_current_user_id();
         $is_owner = ($current_user_id == $cert->user_id);
+        
+        // V2.5: Get correct course name for display
+        if ($cert->template_type === 'cromemart') {
+            $course_display = $cert->event_theme ?: ($cert->event_name ?: 'Event Participation');
+        } else {
+            $course_display = $cert->product_name;
+        }
 
         echo '<div class="ofst-cert-result success">';
         echo '<h3>✓ Certificate Verified</h3>';
         echo '<div class="cert-details">';
         echo '<p><strong>Certificate ID:</strong> ' . esc_html($cert->certificate_id) . '</p>';
         echo '<p><strong>Student:</strong> ' . esc_html($cert->first_name . ' ' . $cert->last_name) . '</p>';
-        echo '<p><strong>Course:</strong> ' . esc_html($cert->product_name) . '</p>';
+        echo '<p><strong>Course:</strong> ' . esc_html($course_display) . '</p>';
         echo '<p><strong>Issued:</strong> ' . esc_html(date('F d, Y', strtotime($cert->processed_date))) . '</p>';
 
         if ($is_owner && !empty($cert->certificate_file)) {
@@ -953,9 +963,15 @@ function ofst_cert_my_certificates_page()
 
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_requests';
+    $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
+    // V2.5: JOIN event table to get event_theme for Cromemart certificates
     $certificates = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM $table WHERE user_id = %d ORDER BY requested_date DESC",
+        "SELECT r.*, e.event_theme, e.event_name 
+        FROM $table r
+        LEFT JOIN $event_table e ON r.event_date_id = e.id
+        WHERE r.user_id = %d 
+        ORDER BY r.requested_date DESC",
         $user_id
     ));
 
@@ -983,10 +999,17 @@ function ofst_cert_my_certificates_page()
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($certificates as $cert): ?>
+                        <?php foreach ($certificates as $cert): 
+                            // V2.5: Get correct course name for display
+                            if ($cert->template_type === 'cromemart') {
+                                $course_display = $cert->event_theme ?: ($cert->event_name ?: 'Event Participation');
+                            } else {
+                                $course_display = $cert->product_name ?: '-';
+                            }
+                        ?>
                             <tr>
                                 <td><?php echo esc_html($cert->certificate_id); ?></td>
-                                <td><?php echo esc_html($cert->product_name); ?></td>
+                                <td><?php echo esc_html($course_display); ?></td>
                                 <td>
                                     <?php
                                     $status_class = '';
@@ -1003,7 +1026,7 @@ function ofst_cert_my_certificates_page()
                                 <td><?php echo esc_html(date('M d, Y', strtotime($cert->requested_date))); ?></td>
                                 <td>
                                     <?php if ($cert->status == 'issued' && !empty($cert->certificate_file)): ?>
-                                        <a href="<?php echo esc_url($cert->certificate_file); ?>" class="ofst-btn-small" download>Download</a>
+                                        <button type="button" class="ofst-btn-small" onclick="ofstDownloadCert('<?php echo esc_url($cert->certificate_file); ?>', '<?php echo esc_attr($cert->certificate_id); ?>.html')">Download</button>
                                     <?php elseif ($cert->status == 'pending'): ?>
                                         <span class="text-muted">Pending</span>
                                     <?php endif; ?>
@@ -1015,6 +1038,26 @@ function ofst_cert_my_certificates_page()
             <?php endif; ?>
         </div>
     </div>
+    
+    <script>
+    function ofstDownloadCert(url, filename) {
+        fetch(url)
+            .then(response => response.blob())
+            .then(blob => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+            })
+            .catch(() => {
+                // Fallback: open in new tab if fetch fails (CORS issue)
+                window.open(url, '_blank');
+            });
+    }
+    </script>
 <?php
     return ob_get_clean();
 }

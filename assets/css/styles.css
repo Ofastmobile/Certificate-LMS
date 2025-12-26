@@ -335,9 +335,10 @@
 
 .ofst-cert-table th,
 .ofst-cert-table td {
-    padding: 16px 20px;
+    padding: 12px 14px;
     text-align: left;
     border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
 }
 
 .ofst-cert-table th {
