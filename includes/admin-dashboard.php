@@ -414,10 +414,18 @@ function ofst_cert_admin_dashboard()
             $reason = isset($_GET['reason']) ? sanitize_text_field($_GET['reason']) : 'Not specified';
             ofst_cert_reject_request($cert_id, $reason);
 
-            // Send rejection email
+            // Send rejection email - V2.5 FIX: JOIN event data for Cromemart certificates
             global $wpdb;
             $table = $wpdb->prefix . 'ofst_cert_requests';
-            $request = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $cert_id));
+            $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
+            
+            $request = $wpdb->get_row($wpdb->prepare("
+                SELECT r.*, e.event_theme, e.event_name 
+                FROM $table r 
+                LEFT JOIN $event_table e ON r.event_date_id = e.id 
+                WHERE r.id = %d
+            ", $cert_id));
+            
             if ($request) {
                 ofst_cert_send_rejection_email($request, $reason);
             }

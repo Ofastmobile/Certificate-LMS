@@ -587,11 +587,27 @@ function ofst_cert_process_student_request()
     ));
 
     if ($inserted) {
+        // V2.5: Fix course name for Cromemart confirmations
+        if ($template_type === 'cromemart') {
+            // For Cromemart - get event details
+            global $wpdb;
+            $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
+            $event = $wpdb->get_row($wpdb->prepare(
+                "SELECT event_theme, event_name FROM $event_table WHERE id = %d",
+                $event_date_id
+            ));
+            $display_name = $event ? ($event->event_theme ?: $event->event_name) : 'Event Participation';
+        } else {
+            // For Ofastshop - use product name
+            $display_name = $product_name;
+        }
+
         // Send confirmation email to student
-        ofst_cert_send_student_confirmation($email, $first_name, $product_name, $cert_id);
+        ofst_cert_send_student_confirmation($email, $first_name, $display_name, $cert_id);
 
         // Send notification to admin
-        ofst_cert_send_admin_notification($cert_id, 'student', $first_name . ' ' . $last_name, $product_name);
+        // V2.5: Use display_name which has correct event_theme for Cromemart
+        ofst_cert_send_admin_notification($cert_id, 'student', $first_name . ' ' . $last_name, $display_name);
 
         // Note: Vendor is notified only when certificate is issued, not on request
 
