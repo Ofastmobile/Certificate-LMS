@@ -40,9 +40,17 @@ function ofst_cert_send_student_confirmation($email, $name, $course, $cert_id)
     </html>
     ";
 
+    // Sanitize email header values to prevent injection attacks
+    $from_name = sanitize_text_field(ofst_cert_get_setting('from_name'));
+    $from_email = sanitize_email(ofst_cert_get_setting('from_email'));
+    
+    // Remove any newlines/carriage returns
+    $from_name = str_replace(["\r", "\n"], '', $from_name);
+    $from_email = str_replace(["\r", "\n"], '', $from_email);
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+        'From: ' . $from_name . ' <' . $from_email . '>'
     );
 
     return wp_mail($email, $subject, $message, $headers);
@@ -84,9 +92,17 @@ function ofst_cert_send_admin_notification($cert_id, $type, $student_name, $cour
     </html>
     ";
 
+    // Sanitize email header values to prevent injection attacks
+    $from_name = sanitize_text_field(ofst_cert_get_setting('from_name'));
+    $from_email = sanitize_email(ofst_cert_get_setting('from_email'));
+    
+    // Remove any newlines/carriage returns
+    $from_name = str_replace(["\r", "\n"], '', $from_name);
+    $from_email = str_replace(["\r", "\n"], '', $from_email);
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+        'From: ' . $from_name . ' <' . $from_email . '>'
     );
 
     return wp_mail($admin_email, $subject, $message, $headers);
@@ -127,9 +143,17 @@ function ofst_cert_send_vendor_notification($vendor_id, $student_name, $course, 
     </html>
     ";
 
+    // Sanitize email header values to prevent injection attacks
+    $from_name = sanitize_text_field(ofst_cert_get_setting('from_name'));
+    $from_email = sanitize_email(ofst_cert_get_setting('from_email'));
+    
+    // Remove any newlines/carriage returns
+    $from_name = str_replace(["\r", "\n"], '', $from_name);
+    $from_email = str_replace(["\r", "\n"], '', $from_email);
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+        'From: ' . $from_name . ' <' . $from_email . '>'
     );
 
     return wp_mail($vendor->user_email, $subject, $message, $headers);
@@ -189,9 +213,17 @@ function ofst_cert_send_certificate_email($request)
     </html>
     ";
 
+    // Sanitize email header values to prevent injection attacks
+    $from_name = sanitize_text_field(ofst_cert_get_setting('from_name'));
+    $from_email = sanitize_email(ofst_cert_get_setting('from_email'));
+    
+    // Remove any newlines/carriage returns
+    $from_name = str_replace(["\r", "\n"], '', $from_name);
+    $from_email = str_replace(["\r", "\n"], '', $from_email);
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+        'From: ' . $from_name . ' <' . $from_email . '>'
     );
 
     return wp_mail($request->email, $subject, $message, $headers);
@@ -242,9 +274,17 @@ function ofst_cert_send_rejection_email($request, $reason)
     </html>
     ";
 
+    // Sanitize email header values to prevent injection attacks
+    $from_name = sanitize_text_field(ofst_cert_get_setting('from_name'));
+    $from_email = sanitize_email(ofst_cert_get_setting('from_email'));
+    
+    // Remove any newlines/carriage returns
+    $from_name = str_replace(["\r", "\n"], '', $from_name);
+    $from_email = str_replace(["\r", "\n"], '', $from_email);
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+        'From: ' . $from_name . ' <' . $from_email . '>'
     );
 
     return wp_mail($request->email, $subject, $message, $headers);
@@ -289,9 +329,17 @@ function ofst_cert_notify_vendor_certificate_issued($request)
     </html>
     ";
 
+    // Sanitize email header values to prevent injection attacks
+    $from_name = sanitize_text_field(ofst_cert_get_setting('from_name'));
+    $from_email = sanitize_email(ofst_cert_get_setting('from_email'));
+    
+    // Remove any newlines/carriage returns
+    $from_name = str_replace(["\r", "\n"], '', $from_name);
+    $from_email = str_replace(["\r", "\n"], '', $from_email);
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
+        'From: ' . $from_name . ' <' . $from_email . '>'
     );
 
     return wp_mail($vendor->user_email, $subject, $message, $headers);
