@@ -548,6 +548,32 @@ function ofst_cert_check_rate_limit($identifier, $action_type, $max_attempts = 5
     global $wpdb;
     $table = $wpdb->prefix . 'ofst_cert_rate_limits';
 
+    // Validate action_type against whitelist to prevent bypass
+    $allowed_actions = array(
+        'student_request',
+        'vendor_request', 
+        'verification',
+        'admin_action'
+    );
+    
+    if (!in_array($action_type, $allowed_actions, true)) {
+        return [
+            'allowed' => false,
+            'retry_after' => 0,
+            'message' => 'Invalid action type'
+        ];
+    }
+
+    // Sanitize identifier to prevent injection
+    $identifier = sanitize_text_field($identifier);
+    if (empty($identifier)) {
+        return [
+            'allowed' => false,
+            'retry_after' => 0,
+            'message' => 'Invalid identifier'
+        ];
+    }
+
     $cutoff_time = date('Y-m-d H:i:s', strtotime("-$timeframe_minutes minutes"));
 
     // Clean old entries
