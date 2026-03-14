@@ -257,13 +257,14 @@ add_action('admin_init', 'ofst_cert_check_db_version');
 function ofst_cert_check_db_version()
 {
     $current_db_version = get_option('ofst_cert_db_version', '1.0');
-    $required_db_version = '2.5'; // Increment this when making DB changes
+    $required_db_version = '2.6'; // Increment this when making DB changes
 
     if (version_compare($current_db_version, $required_db_version, '<')) {
         // Run all migrations
         ofst_cert_create_tables(); // Base tables
         ofst_cert_migrate_to_v2(); // V2.0 columns and tables
         ofst_cert_run_safe_migrations(); // Safe column additions
+        ofst_cert_migrate_certificate_tokens(); // V2.6 security token migration
 
         // Update version
         update_option('ofst_cert_db_version', $required_db_version);
@@ -347,6 +348,44 @@ function ofst_cert_run_safe_migrations()
     }
 
     $wpdb->suppress_errors(false);
+}
+
+/**
+ * Migrate existing certificates to have security tokens
+ * This ensures all certificates require proper authorization
+ */
+function ofst_cert_migrate_certificate_tokens()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_requests';
+
+    // Get all certificates that don't have tokens
+    $certificates_without_tokens = $wpdb->get_results(
+        "SELECT id, certificate_id FROM $table WHERE certificate_token IS NULL AND status = 'issued'"
+    );
+
+    $migrated_count = 0;
+    foreach ($certificates_without_tokens as $cert) {
+        // Generate secure token
+        $access_token = wp_generate_password(32, false, false);
+        
+        // Update certificate with token
+        $result = $wpdb->update(
+            $table,
+            ['certificate_token' => $access_token],
+            ['id' => $cert->id]
+        );
+        
+        if ($result !== false) {
+            $migrated_count++;
+        }
+    }
+
+    if ($migrated_count > 0) {
+        error_log("OFST Certificate: Migrated $migrated_count existing certificates with security tokens");
+    }
+
+    return $migrated_count;
 }
 
 /**

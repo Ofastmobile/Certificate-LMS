@@ -279,12 +279,10 @@ function ofst_cert_serve_certificate($certificate_id, $token)
         return ['success' => false, 'error' => 'Certificate not found'];
     }
 
-    // Verify token if certificate has one
-    if (!empty($cert->certificate_token) && $cert->certificate_token !== $token) {
-        // Allow access without token for backward compatibility (old certificates)
-        // but log the attempt
-        error_log("OFST Certificate: Invalid token attempt for certificate $certificate_id");
-        return ['success' => false, 'error' => 'Invalid access token'];
+    // Verify token - required for all certificates
+    if (empty($cert->certificate_token) || $cert->certificate_token !== $token) {
+        error_log("OFST Certificate: Unauthorized access attempt for certificate $certificate_id");
+        return ['success' => false, 'error' => 'Invalid or missing access token'];
     }
 
     if (empty($cert->certificate_file)) {
