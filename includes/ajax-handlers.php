@@ -20,10 +20,32 @@ function ofst_ajax_get_event_dates()
         wp_send_json_error(['message' => 'Security check failed']);
     }
 
+    // Require user to be logged in
+    if (!is_user_logged_in()) {
+        wp_send_json_error(['message' => 'Authentication required']);
+    }
+
     $institution_id = isset($_POST['institution_id']) ? absint($_POST['institution_id']) : 0;
 
     if (!$institution_id) {
         wp_send_json_error(['message' => 'Invalid institution']);
+    }
+
+    // Authorization check: verify user has access to this institution
+    if (!current_user_can('manage_options')) {
+        // For non-admin users, check if they have created events for this institution
+        global $wpdb;
+        $events_table = $wpdb->prefix . 'ofst_cert_event_dates';
+        
+        $user_has_access = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $events_table WHERE institution_id = %d AND created_by = %d",
+            $institution_id,
+            get_current_user_id()
+        ));
+        
+        if (!$user_has_access) {
+            wp_send_json_error(['message' => 'Insufficient permissions']);
+        }
     }
 
     global $wpdb;
