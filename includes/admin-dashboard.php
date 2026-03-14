@@ -1764,85 +1764,173 @@ function ofst_cert_participants_page()
     // Handle File Upload - supports CSV, TXT, and XLSX (Excel)
     if (isset($_POST['csv_upload']) && check_admin_referer('csv_upload_nonce') && !empty($_FILES['csv_file']['tmp_name'])) {
         $event_id = absint($_POST['csv_event_id']);
-        $file_path = $_FILES['csv_file']['tmp_name'];
-        $file_name = $_FILES['csv_file']['name'];
+        $file_upload = $_FILES['csv_file'];
+        $file_path = $file_upload['tmp_name'];
+        $file_name = $file_upload['name'];
+        $file_size = $file_upload['size'];
         $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
-        if ($event_id && is_uploaded_file($file_path)) {
+        // Security validation
+        $max_size = 10 * 1024 * 1024; // 10MB limit
+        $allowed_extensions = ['csv', 'txt', 'xlsx'];
+        $allowed_mime_types = [
+            'text/csv',
+            'text/plain', 
+            'application/csv',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ];
+
+        // Validate file size
+        if ($file_size > $max_size) {
+            ofst_cert_toast('File too large. Maximum size is 10MB.', 'error');
+        }
+        // Validate file extension
+        elseif (!in_array($file_ext, $allowed_extensions)) {
+            ofst_cert_toast('Invalid file type. Only CSV, TXT, and XLSX files are allowed.', 'error');
+        }
+        // Validate MIME type
+        elseif (!in_array(mime_content_type($file_path), $allowed_mime_types)) {
+            ofst_cert_toast('Invalid file format. File content does not match expected type.', 'error');
+        }
+        // Validate upload and event ID
+        elseif ($event_id && is_uploaded_file($file_path)) {
             $lines = [];
 
-            // Handle XLSX (Excel) files
+            // Handle XLSX (Excel) files with security measures
             if ($file_ext === 'xlsx' && class_exists('ZipArchive')) {
                 $zip = new ZipArchive();
                 if ($zip->open($file_path) === true) {
-                    // Read shared strings (cell values)
-                    $shared_strings = [];
-                    $strings_xml = $zip->getFromName('xl/sharedStrings.xml');
-                    if ($strings_xml) {
-                        $xml = simplexml_load_string($strings_xml);
-                        foreach ($xml->si as $si) {
-                            $shared_strings[] = (string)$si->t;
-                        }
-                    }
+                    // Limit XML processing to prevent XXE attacks
+                    $previous_entity_loader = libxml_disable_entity_loader(true);
+                    $previous_use_internal_errors = libxml_use_internal_errors(true);
 
-                    // Read first worksheet
-                    $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
-                    if ($sheet_xml) {
-                        $xml = simplexml_load_string($sheet_xml);
-                        foreach ($xml->sheetData->row as $row) {
-                            $row_data = [];
-                            foreach ($row->c as $cell) {
-                                $value = '';
-                                if (isset($cell->v)) {
-                                    $value = (string)$cell->v;
-                                    // Check if it's a shared string reference
-                                    if (isset($cell['t']) && (string)$cell['t'] === 's') {
-                                        $value = $shared_strings[(int)$value] ?? $value;
+                    try {
+                        // Read shared strings with size limit
+                        $shared_strings = [];
+                        $strings_xml = $zip->getFromName('xl/sharedStrings.xml');
+                        if ($strings_xml && strlen($strings_xml) < 1048576) { // 1MB limit for shared strings
+                            $xml = simplexml_load_string($strings_xml, 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET);
+                            if ($xml !== false) {
+                                foreach ($xml->si as $si) {
+                                    $shared_strings[] = (string)$si->t;
+                                    if (count($shared_strings) > 10000) break; // Limit shared strings
+                                }
+                            }
+                        }
+
+                        // Read first worksheet with size limit
+                        $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+                        if ($sheet_xml && strlen($sheet_xml) < 5242880) { // 5MB limit for worksheet
+                            $xml = simplexml_load_string($sheet_xml, 'SimpleXMLElement', LIBXML_NOCDATA | LIBXML_NONET);
+                            if ($xml !== false) {
+                                $row_count = 0;
+                                foreach ($xml->sheetData->row as $row) {
+                                    if (++$row_count > 10000) break; // Limit rows processed
+                                    
+                                    $row_data = [];
+                                    foreach ($row->c as $cell) {
+                                        $value = '';
+                                        if (isset($cell->v)) {
+                                            $value = (string)$cell->v;
+                                            // Check if it's a shared string reference
+                                            if (isset($cell['t']) && (string)$cell['t'] === 's') {
+                                                $index = (int)$value;
+                                                $value = isset($shared_strings[$index]) ? $shared_strings[$index] : $value;
+                                            }
+                                        }
+                                        $row_data[] = $value;
+                                        if (count($row_data) >= 5) break; // Limit columns
+                                    }
+                                    if (!empty($row_data[0])) {
+                                        // Format: name,email or just name
+                                        $lines[] = implode(',', array_slice($row_data, 0, 2));
                                     }
                                 }
-                                $row_data[] = $value;
-                            }
-                            if (!empty($row_data[0])) {
-                                // Format: name,email or just name
-                                $lines[] = implode(',', array_slice($row_data, 0, 2));
                             }
                         }
+                    } catch (Exception $e) {
+                        error_log('XLSX processing error: ' . $e->getMessage());
+                        ofst_cert_toast('Error processing Excel file. Please try a CSV format instead.', 'error');
+                    } finally {
+                        // Restore previous XML settings
+                        libxml_disable_entity_loader($previous_entity_loader);
+                        libxml_use_internal_errors($previous_use_internal_errors);
                     }
                     $zip->close();
                 }
             } else {
-                // Handle CSV/TXT files
-                $file_content = file_get_contents($file_path);
-                $lines = array_filter(array_map('trim', explode("\n", $file_content)));
-            }
-
-            $added = 0;
-            $skip_headers = ['name', 'full name', 'email', 'full_name', 'participant', 'attendee'];
-
-            foreach ($lines as $line) {
-                // Check if line has comma (name,email format)
-                if (strpos($line, ',') !== false) {
-                    $parts = array_map('trim', explode(',', $line, 2));
-                    $name = sanitize_text_field($parts[0]);
-                    $email = isset($parts[1]) ? sanitize_email($parts[1]) : '';
+                // Handle CSV/TXT files with size and content validation
+                $file_content = file_get_contents($file_path, false, null, 0, $max_size);
+                if ($file_content === false) {
+                    ofst_cert_toast('Unable to read file content.', 'error');
                 } else {
-                    $name = sanitize_text_field($line);
-                    $email = '';
-                }
-
-                // Skip header rows
-                if (!empty($name) && !in_array(strtolower($name), $skip_headers)) {
-                    $wpdb->insert($participants_table, [
-                        'event_date_id' => $event_id,
-                        'full_name' => $name,
-                        'email' => $email ?: null,
-                        'added_date' => current_time('mysql'),
-                        'added_by' => get_current_user_id()
-                    ]);
-                    $added++;
+                    // Basic content validation - ensure it looks like text
+                    if (!mb_check_encoding($file_content, 'UTF-8') && !mb_check_encoding($file_content, 'ASCII')) {
+                        ofst_cert_toast('File contains invalid character encoding. Please ensure UTF-8 or ASCII format.', 'error');
+                    } else {
+                        $lines = array_filter(array_map('trim', explode("\n", $file_content)));
+                        // Limit number of lines processed
+                        if (count($lines) > 10000) {
+                            $lines = array_slice($lines, 0, 10000);
+                            ofst_cert_toast('Warning: File truncated to first 10,000 lines.', 'warning');
+                        }
+                    }
                 }
             }
-            ofst_cert_toast($added . ' participants imported!', 'success');
+
+            // Process lines only if they were successfully extracted
+            if (!empty($lines)) {
+                $added = 0;
+                $skip_headers = ['name', 'full name', 'email', 'full_name', 'participant', 'attendee'];
+
+                foreach ($lines as $line) {
+                    // Additional sanitization and length limits
+                    $line = trim($line);
+                    if (strlen($line) > 500) continue; // Skip overly long lines
+                    
+                    // Check if line has comma (name,email format)
+                    if (strpos($line, ',') !== false) {
+                        $parts = array_map('trim', explode(',', $line, 2));
+                        $name = sanitize_text_field($parts[0]);
+                        $email = isset($parts[1]) ? sanitize_email($parts[1]) : '';
+                    } else {
+                        $name = sanitize_text_field($line);
+                        $email = '';
+                    }
+
+                    // Additional name validation
+                    if (strlen($name) > 100) $name = substr($name, 0, 100); // Limit name length
+                    
+                    // Skip header rows and validate name content
+                    if (!empty($name) && 
+                        !in_array(strtolower($name), $skip_headers) && 
+                        preg_match('/^[a-zA-Z0-9\s\-\.\'\x{00C0}-\x{024F}\x{1E00}-\x{1EFF}]+$/u', $name)) {
+                        
+                        $wpdb->insert($participants_table, [
+                            'event_date_id' => $event_id,
+                            'full_name' => $name,
+                            'email' => $email ?: null,
+                            'added_date' => current_time('mysql'),
+                            'added_by' => get_current_user_id()
+                        ]);
+                        $added++;
+                        
+                        // Limit total participants added in one operation
+                        if ($added >= 5000) {
+                            ofst_cert_toast($added . ' participants imported (limit reached). Process additional entries separately.', 'warning');
+                            break;
+                        }
+                    }
+                }
+                
+                if ($added > 0) {
+                    ofst_cert_toast($added . ' participants imported successfully!', 'success');
+                } else {
+                    ofst_cert_toast('No valid participant data found in file.', 'warning');
+                }
+            }
+        } else {
+            ofst_cert_toast('Invalid file or missing event selection.', 'error');
         }
     }
 
