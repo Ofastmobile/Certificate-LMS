@@ -396,42 +396,46 @@ function ofst_cert_admin_dashboard()
         ofst_cert_toast('Certificate generated and issued! Email sent to student.', 'success');
     }
 
-    if (isset($_GET['action']) && isset($_GET['cert_id']) && $_GET['action'] !== 'view') {
-        check_admin_referer('ofst_cert_action_' . $_GET['cert_id']);
+    // Handle quick approve via POST
+    if (isset($_POST['ofst_quick_approve']) && isset($_POST['cert_id'])) {
+        check_admin_referer('ofst_quick_approve_' . $_POST['cert_id']);
 
-        $cert_id = absint($_GET['cert_id']);
-        $action = sanitize_text_field($_GET['action']);
-
-        if ($action === 'approve-quick') {
-            // Quick approve with today's date
-            $result = ofst_cert_approve_request($cert_id, date('Y-m-d'));
-            if ($result['success']) {
-                ofst_cert_toast('Certificate generated and issued! Email sent to student.', 'success');
-            } else {
-                ofst_cert_toast($result['error'], 'error');
-            }
-        } elseif ($action === 'reject') {
-            $reason = isset($_GET['reason']) ? sanitize_text_field($_GET['reason']) : 'Not specified';
-            ofst_cert_reject_request($cert_id, $reason);
-
-            // Send rejection email - V2.5 FIX: JOIN event data for Cromemart certificates
-            global $wpdb;
-            $table = $wpdb->prefix . 'ofst_cert_requests';
-            $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
-            
-            $request = $wpdb->get_row($wpdb->prepare("
-                SELECT r.*, e.event_theme, e.event_name 
-                FROM $table r 
-                LEFT JOIN $event_table e ON r.event_date_id = e.id 
-                WHERE r.id = %d
-            ", $cert_id));
-            
-            if ($request) {
-                ofst_cert_send_rejection_email($request, $reason);
-            }
-
-            ofst_cert_toast('Certificate request rejected. Email sent to student.', 'warning');
+        $cert_id = absint($_POST['cert_id']);
+        $result = ofst_cert_approve_request($cert_id, date('Y-m-d'));
+        
+        if ($result['success']) {
+            ofst_cert_toast('Certificate generated and issued! Email sent to student.', 'success');
+        } else {
+            ofst_cert_toast($result['error'], 'error');
         }
+    }
+
+    // Handle rejection via POST
+    if (isset($_POST['ofst_reject_cert']) && isset($_POST['cert_id'])) {
+        check_admin_referer('ofst_reject_cert_' . $_POST['cert_id']);
+
+        $cert_id = absint($_POST['cert_id']);
+        $reason = isset($_POST['rejection_reason']) ? sanitize_text_field($_POST['rejection_reason']) : 'Not specified';
+        
+        ofst_cert_reject_request($cert_id, $reason);
+
+        // Send rejection email - V2.5 FIX: JOIN event data for Cromemart certificates
+        global $wpdb;
+        $table = $wpdb->prefix . 'ofst_cert_requests';
+        $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
+        
+        $request = $wpdb->get_row($wpdb->prepare("
+            SELECT r.*, e.event_theme, e.event_name 
+            FROM $table r 
+            LEFT JOIN $event_table e ON r.event_date_id = e.id 
+            WHERE r.id = %d
+        ", $cert_id));
+        
+        if ($request) {
+            ofst_cert_send_rejection_email($request, $reason);
+        }
+
+        ofst_cert_toast('Certificate request rejected. Email sent to student.', 'warning');
     }
 
     global $wpdb;
@@ -510,10 +514,9 @@ function ofst_cert_admin_dashboard()
                                     <td><?php echo date('M d, Y', strtotime($req->requested_date)); ?></td>
                                     <td>
                                         <button type="button" class="button button-small" onclick="openPendingModal(<?php echo $req->id; ?>)">View</button>
-                                        <a href="#"
-                                            class="button button-small reject-btn"
+                                        <button type="button" class="button button-small reject-btn"
                                             data-cert-id="<?php echo $req->id; ?>"
-                                            data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>">Reject</a>
+                                            data-nonce="<?php echo wp_create_nonce('ofst_reject_cert_' . $req->id); ?>">Reject</button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -624,10 +627,9 @@ function ofst_cert_admin_dashboard()
                                     onclick="return confirm('Generate certificate and send to student?')">
                                     ✅ Generate & Issue Certificate
                                 </button>
-                                <a href="#"
-                                    class="button button-large reject-btn"
+                                <button type="button" class="button button-large reject-btn"
                                     data-cert-id="<?php echo $req->id; ?>"
-                                    data-nonce="<?php echo wp_create_nonce('ofst_cert_action_' . $req->id); ?>">Reject Request</a>
+                                    data-nonce="<?php echo wp_create_nonce('ofst_reject_cert_' . $req->id); ?>">Reject Request</button>
                                 <button type="button" class="button button-large" onclick="closePendingModal(<?php echo $req->id; ?>)">Close</button>
                             </p>
                         </form>
@@ -654,7 +656,7 @@ function ofst_cert_admin_dashboard()
             document.querySelectorAll('.cert-checkbox').forEach(cb => cb.checked = this.checked);
         });
 
-        // Handle reject buttons with proper nonces
+        // Handle reject buttons with proper POST requests
         document.querySelectorAll('.reject-btn').forEach(function(btn) {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -662,9 +664,38 @@ function ofst_cert_admin_dashboard()
                 var nonce = this.getAttribute('data-nonce');
                 var reason = prompt('Rejection reason (optional):');
                 if (reason !== null) {
-                    window.location.href = '?page=ofst-certificates&action=reject&cert_id=' + certId +
-                        '&reason=' + encodeURIComponent(reason) +
-                        '&_wpnonce=' + nonce;
+                    // Create and submit a POST form
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '';
+                    
+                    var certInput = document.createElement('input');
+                    certInput.type = 'hidden';
+                    certInput.name = 'cert_id';
+                    certInput.value = certId;
+                    
+                    var nonceInput = document.createElement('input');
+                    nonceInput.type = 'hidden';
+                    nonceInput.name = '_wpnonce';
+                    nonceInput.value = nonce;
+                    
+                    var actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'ofst_reject_cert';
+                    actionInput.value = '1';
+                    
+                    var reasonInput = document.createElement('input');
+                    reasonInput.type = 'hidden';
+                    reasonInput.name = 'rejection_reason';
+                    reasonInput.value = reason;
+                    
+                    form.appendChild(certInput);
+                    form.appendChild(nonceInput);
+                    form.appendChild(actionInput);
+                    form.appendChild(reasonInput);
+                    
+                    document.body.appendChild(form);
+                    form.submit();
                 }
             });
         });
@@ -809,10 +840,10 @@ function ofst_cert_issued_page()
     $table = $wpdb->prefix . 'ofst_cert_requests';
     $event_table = $wpdb->prefix . 'ofst_cert_event_dates';
 
-    // Handle resend email action
-    if (isset($_GET['action']) && $_GET['action'] === 'resend' && isset($_GET['cert_id'])) {
-        check_admin_referer('ofst_resend_email_' . $_GET['cert_id']);
-        $cert_id = absint($_GET['cert_id']);
+    // Handle resend email action via POST
+    if (isset($_POST['ofst_resend_email']) && isset($_POST['cert_id'])) {
+        check_admin_referer('ofst_resend_email_' . $_POST['cert_id']);
+        $cert_id = absint($_POST['cert_id']);
         $result = ofst_cert_retry_email($cert_id);
         if ($result['success']) {
             ofst_cert_toast('Email resent successfully!', 'success');
@@ -877,11 +908,14 @@ function ofst_cert_issued_page()
                                 <?php if ($cert->certificate_file): ?>
                                     <a href="<?php echo esc_url($cert->certificate_file); ?>" class="button button-small" target="_blank">View</a>
                                 <?php endif; ?>
-                                <a href="?page=ofst-certificates-issued&action=resend&cert_id=<?php echo $cert->id; ?>&_wpnonce=<?php echo wp_create_nonce('ofst_resend_email_' . $cert->id); ?>"
-                                    class="button button-small"
-                                    onclick="return confirm('Resend certificate email to <?php echo esc_js($cert->email); ?>?')">
-                                    📧 Resend Email
-                                </a>
+                                <form method="post" style="display: inline;">
+                                    <?php wp_nonce_field('ofst_resend_email_' . $cert->id); ?>
+                                    <input type="hidden" name="cert_id" value="<?php echo $cert->id; ?>">
+                                    <button type="submit" name="ofst_resend_email" class="button button-small"
+                                        onclick="return confirm('Resend certificate email to <?php echo esc_js($cert->email); ?>?')">
+                                        📧 Resend Email
+                                    </button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -1057,10 +1091,10 @@ function ofst_cert_rejected_page()
         }
     }
 
-    // Handle permanent deletion
-    if (isset($_GET['delete_rejected']) && isset($_GET['_wpnonce'])) {
-        $id = absint($_GET['delete_rejected']);
-        if (wp_verify_nonce($_GET['_wpnonce'], 'delete_rejected_' . $id)) {
+    // Handle permanent deletion via POST
+    if (isset($_POST['delete_rejected']) && isset($_POST['_wpnonce'])) {
+        $id = absint($_POST['delete_rejected']);
+        if (wp_verify_nonce($_POST['_wpnonce'], 'delete_rejected_' . $id)) {
             $wpdb->delete($table, ['id' => $id]);
             ofst_cert_toast('Rejected certificate deleted permanently.', 'success');
         }
@@ -1122,9 +1156,12 @@ function ofst_cert_rejected_page()
                             <td><?php echo $cert->processed_date ? date('M d, Y', strtotime($cert->processed_date)) : '-'; ?></td>
                             <td>
                                 <button type="button" class="button button-small" onclick="openRejectedModal(<?php echo $cert->id; ?>)">View Details</button>
-                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-certificates-rejected&delete_rejected=' . $cert->id), 'delete_rejected_' . $cert->id); ?>"
-                                    onclick="return confirm('Permanently delete this rejected request?');"
-                                    class="button button-small" style="color: #a00;">Delete</a>
+                                <form method="post" style="display: inline;">
+                                    <?php wp_nonce_field('delete_rejected_' . $cert->id); ?>
+                                    <input type="hidden" name="delete_rejected" value="<?php echo $cert->id; ?>">
+                                    <button type="submit" class="button button-small" style="color: #a00;"
+                                        onclick="return confirm('Permanently delete this rejected request?');">Delete</button>
+                                </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -1450,9 +1487,9 @@ function ofst_cert_institutions_page()
         }
     }
 
-    // Handle delete
-    if (isset($_GET['delete_institution']) && check_admin_referer('delete_institution_' . $_GET['delete_institution'])) {
-        $wpdb->delete($table, ['id' => absint($_GET['delete_institution'])]);
+    // Handle delete via POST
+    if (isset($_POST['delete_institution']) && check_admin_referer('delete_institution_' . $_POST['delete_institution'])) {
+        $wpdb->delete($table, ['id' => absint($_POST['delete_institution'])]);
         ofst_cert_toast('Institution deleted!', 'success');
     }
 
@@ -1524,9 +1561,12 @@ function ofst_cert_institutions_page()
                                 <td><?php echo date('M d, Y', strtotime($inst->created_date)); ?></td>
                                 <td>
                                     <a href="<?php echo admin_url('admin.php?page=ofst-institutions&edit_institution=' . $inst->id); ?>" class="button button-small">Edit</a>
-                                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-institutions&delete_institution=' . $inst->id), 'delete_institution_' . $inst->id); ?>"
-                                        onclick="return confirm('Delete this institution?');"
-                                        style="color: red;">Delete</a>
+                                    <form method="post" style="display: inline;">
+                                        <?php wp_nonce_field('delete_institution_' . $inst->id); ?>
+                                        <input type="hidden" name="delete_institution" value="<?php echo $inst->id; ?>">
+                                        <button type="submit" style="color: red; background: none; border: none; text-decoration: underline; cursor: pointer;"
+                                            onclick="return confirm('Delete this institution?');">Delete</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -1582,9 +1622,9 @@ function ofst_cert_event_dates_page()
         }
     }
 
-    // Handle delete
-    if (isset($_GET['delete_event']) && check_admin_referer('delete_event_' . $_GET['delete_event'])) {
-        $wpdb->delete($events_table, ['id' => absint($_GET['delete_event'])]);
+    // Handle delete via POST
+    if (isset($_POST['delete_event']) && check_admin_referer('delete_event_' . $_POST['delete_event'])) {
+        $wpdb->delete($events_table, ['id' => absint($_POST['delete_event'])]);
         ofst_cert_toast('Event deleted!', 'success');
     }
 
@@ -1685,9 +1725,12 @@ function ofst_cert_event_dates_page()
                                 <td><?php echo $evt->is_active ? '<span style="color:green;">Active</span>' : '<span style="color:red;">Inactive</span>'; ?></td>
                                 <td>
                                     <a href="<?php echo admin_url('admin.php?page=ofst-event-dates&edit_event=' . $evt->id); ?>" class="button button-small">Edit</a>
-                                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-event-dates&delete_event=' . $evt->id), 'delete_event_' . $evt->id); ?>"
-                                        onclick="return confirm('Delete this event?');"
-                                        style="color: red;">Delete</a>
+                                    <form method="post" style="display: inline;">
+                                        <?php wp_nonce_field('delete_event_' . $evt->id); ?>
+                                        <input type="hidden" name="delete_event" value="<?php echo $evt->id; ?>">
+                                        <button type="submit" style="color: red; background: none; border: none; text-decoration: underline; cursor: pointer;"
+                                            onclick="return confirm('Delete this event?');">Delete</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -1846,10 +1889,10 @@ function ofst_cert_participants_page()
         }
     }
 
-    // Handle Remove Participant
-    if (isset($_GET['remove_participant']) && isset($_GET['_wpnonce'])) {
-        $id = absint($_GET['remove_participant']);
-        if (wp_verify_nonce($_GET['_wpnonce'], 'remove_participant_' . $id)) {
+    // Handle Remove Participant via POST
+    if (isset($_POST['remove_participant']) && isset($_POST['_wpnonce'])) {
+        $id = absint($_POST['remove_participant']);
+        if (wp_verify_nonce($_POST['_wpnonce'], 'remove_participant_' . $id)) {
             $wpdb->delete($participants_table, ['id' => $id]);
             ofst_cert_toast('Participant removed.', 'success');
         }
@@ -2016,9 +2059,12 @@ Mike Johnson"></textarea>
                                 <td><?php echo esc_html($p->institution_name ?: '-'); ?></td>
                                 <td><?php echo date('M d, Y', strtotime($p->added_date)); ?></td>
                                 <td>
-                                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ofst-participants&remove_participant=' . $p->id), 'remove_participant_' . $p->id); ?>"
-                                        onclick="return confirm('Remove this participant?');"
-                                        style="color: red;">Remove</a>
+                                    <form method="post" style="display: inline;">
+                                        <?php wp_nonce_field('remove_participant_' . $p->id); ?>
+                                        <input type="hidden" name="remove_participant" value="<?php echo $p->id; ?>">
+                                        <button type="submit" style="color: red; background: none; border: none; text-decoration: underline; cursor: pointer;"
+                                            onclick="return confirm('Remove this participant?');">Remove</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
