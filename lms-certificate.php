@@ -287,7 +287,7 @@ function ofst_cert_run_safe_migrations()
     $wpdb->suppress_errors(true);
 
     // Check if main table exists
-    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
+    $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
     if (!$table_exists) {
         $wpdb->suppress_errors(false);
         error_log('OFST Certificate: Main table does not exist, skipping column migrations');
@@ -303,17 +303,37 @@ function ofst_cert_run_safe_migrations()
         'certificate_token' => "varchar(64) DEFAULT NULL AFTER certificate_file"
     );
 
+    // Whitelist of allowed column names for security
+    $allowed_columns = array(
+        'template_type', 'institution_id', 'event_date_id', 
+        'pdf_file_path', 'certificate_token'
+    );
+
     // Get existing columns
     $existing_columns = array();
-    $columns = $wpdb->get_results("SHOW COLUMNS FROM $table");
+    $columns = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM %i", $table));
     foreach ($columns as $col) {
         $existing_columns[] = $col->Field;
     }
 
     // Add missing columns
     foreach ($required_columns as $column => $definition) {
+        // Validate column name against whitelist
+        if (!in_array($column, $allowed_columns)) {
+            error_log("OFST Certificate: Invalid column name '$column' - not in whitelist");
+            continue;
+        }
+        
+        // Validate column name contains only allowed characters
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column)) {
+            error_log("OFST Certificate: Invalid column name format '$column'");
+            continue;
+        }
+        
         if (!in_array($column, $existing_columns)) {
-            $result = $wpdb->query("ALTER TABLE $table ADD COLUMN $column $definition");
+            // Use wpdb->prepare with %i for identifier escaping
+            $sql = $wpdb->prepare("ALTER TABLE %i ADD COLUMN %i $definition", $table, $column);
+            $result = $wpdb->query($sql);
             if ($result !== false) {
                 error_log("OFST Certificate: Added column '$column' to $table");
             } else {
@@ -323,7 +343,7 @@ function ofst_cert_run_safe_migrations()
     }
 
     // Add indexes safely
-    $indexes = $wpdb->get_results("SHOW INDEX FROM $table");
+    $indexes = $wpdb->get_results($wpdb->prepare("SHOW INDEX FROM %i", $table));
     $existing_indexes = array();
     foreach ($indexes as $idx) {
         $existing_indexes[] = $idx->Key_name;
@@ -331,18 +351,22 @@ function ofst_cert_run_safe_migrations()
 
     // Add certificate_token index if missing
     if (!in_array('idx_token', $existing_indexes) && in_array('certificate_token', $existing_columns)) {
-        $wpdb->query("ALTER TABLE $table ADD INDEX idx_token (certificate_token)");
+        $sql = $wpdb->prepare("ALTER TABLE %i ADD INDEX idx_token (certificate_token)", $table);
+        $wpdb->query($sql);
     }
 
     // Ensure product_id and product_name are nullable (for Cromemart)
-    $wpdb->query("ALTER TABLE $table MODIFY product_id bigint(20) DEFAULT NULL");
-    $wpdb->query("ALTER TABLE $table MODIFY product_name varchar(255) DEFAULT NULL");
+    $sql1 = $wpdb->prepare("ALTER TABLE %i MODIFY product_id bigint(20) DEFAULT NULL", $table);
+    $wpdb->query($sql1);
+    $sql2 = $wpdb->prepare("ALTER TABLE %i MODIFY product_name varchar(255) DEFAULT NULL", $table);
+    $wpdb->query($sql2);
 
     // V2.4: Add email column to participants table
     $participants_table = $prefix . 'cert_event_participants';
-    $participant_cols = $wpdb->get_results("SHOW COLUMNS FROM $participants_table LIKE 'email'");
+    $participant_cols = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM %i LIKE 'email'", $participants_table));
     if (empty($participant_cols)) {
-        $wpdb->query("ALTER TABLE $participants_table ADD COLUMN email varchar(100) DEFAULT NULL AFTER full_name");
+        $sql = $wpdb->prepare("ALTER TABLE %i ADD COLUMN email varchar(100) DEFAULT NULL AFTER full_name", $participants_table);
+        $wpdb->query($sql);
         error_log('OFST Certificate: Added email column to participants table');
     }
 
