@@ -40,6 +40,12 @@ function ofst_cert_send_student_confirmation($email, $name, $course, $cert_id)
     </html>
     ";
 
+    // Validate email settings before sending
+    if (!ofst_cert_check_settings_configured()) {
+        error_log('Cannot send certificate email: Email settings not configured');
+        return false;
+    }
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
         'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
@@ -84,6 +90,12 @@ function ofst_cert_send_admin_notification($cert_id, $type, $student_name, $cour
     </html>
     ";
 
+    // Validate email settings before sending
+    if (!ofst_cert_check_settings_configured()) {
+        error_log('Cannot send admin notification email: Email settings not configured');
+        return false;
+    }
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
         'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
@@ -126,6 +138,12 @@ function ofst_cert_send_vendor_notification($vendor_id, $student_name, $course, 
     </body>
     </html>
     ";
+
+    // Validate email settings before sending
+    if (!ofst_cert_check_settings_configured()) {
+        error_log('Cannot send vendor notification email: Email settings not configured');
+        return false;
+    }
 
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
@@ -189,6 +207,12 @@ function ofst_cert_send_certificate_email($request)
     </html>
     ";
 
+    // Validate email settings before sending
+    if (!ofst_cert_check_settings_configured()) {
+        error_log('Cannot send certificate email: Email settings not configured');
+        return false;
+    }
+
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
         'From: ' . ofst_cert_get_setting('from_name') . ' <' . ofst_cert_get_setting('from_email') . '>'
@@ -241,6 +265,12 @@ function ofst_cert_send_rejection_email($request, $reason)
     </body>
     </html>
     ";
+
+    // Validate email settings before sending
+    if (!ofst_cert_check_settings_configured()) {
+        error_log('Cannot send rejection email: Email settings not configured');
+        return false;
+    }
 
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',

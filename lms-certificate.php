@@ -108,10 +108,10 @@ function ofst_cert_init_settings()
         'cert_prefix' => 'OFSHDG',
         'cert_counter' => '1',
         'min_days_after_purchase' => '3',
-        'company_name' => 'Ofastshop Digitals',
-        '  support_email' => 'support@ofastshop.com',
-        'from_email' => 'support@ofastshop.com',
-        'from_name' => 'Ofastshop Digitals',
+        'company_name' => '',
+        'support_email' => '',
+        'from_email' => '',
+        'from_name' => '',
         'logo_url' => 'YOUR_LOGO_URL_HERE',
         'seal_url' => 'YOUR_SEAL_URL_HERE',
         'signature_url' => 'YOUR_SIGNATURE_URL_HERE',
@@ -132,6 +132,91 @@ function ofst_cert_init_settings()
             ));
         }
     }
+
+    // Migrate malformed keys from existing installations
+    ofst_cert_fix_malformed_settings();
+}
+
+// Fix malformed settings keys and remove hardcoded values from existing installations
+function ofst_cert_fix_malformed_settings()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'ofst_cert_settings';
+
+    // Fix malformed '  support_email' key (with leading spaces)
+    $malformed = $wpdb->get_var($wpdb->prepare(
+        "SELECT setting_value FROM $table WHERE setting_key = %s",
+        '  support_email'
+    ));
+
+    if ($malformed !== null) {
+        // Check if correct key exists
+        $correct_exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE setting_key = %s",
+            'support_email'
+        ));
+
+        // If correct key doesn't exist, migrate the value
+        if (!$correct_exists) {
+            $wpdb->insert($table, array(
+                'setting_key' => 'support_email',
+                'setting_value' => ''
+            ));
+        }
+
+        // Remove malformed key
+        $wpdb->delete($table, array('setting_key' => '  support_email'));
+    }
+
+    // Remove hardcoded production values to force admin configuration
+    $hardcoded_values = array(
+        'Ofastshop Digitals',
+        'support@ofastshop.com'
+    );
+
+    foreach ($hardcoded_values as $hardcoded) {
+        $wpdb->query($wpdb->prepare(
+            "UPDATE $table SET setting_value = '' WHERE setting_value = %s",
+            $hardcoded
+        ));
+    }
+}
+
+// Validate email settings are properly configured
+function ofst_cert_validate_email_settings()
+{
+    $required_settings = array('company_name', 'support_email', 'from_email', 'from_name');
+    $errors = array();
+
+    foreach ($required_settings as $setting) {
+        $value = trim(ofst_cert_get_setting($setting));
+        
+        if (empty($value)) {
+            $errors[] = ucfirst(str_replace('_', ' ', $setting)) . ' is required';
+            continue;
+        }
+
+        // Validate email format for email fields
+        if (strpos($setting, 'email') !== false && !is_email($value)) {
+            $errors[] = ucfirst(str_replace('_', ' ', $setting)) . ' must be a valid email address';
+        }
+    }
+
+    return array(
+        'valid' => empty($errors),
+        'errors' => $errors
+    );
+}
+
+// Check if settings are configured before sending emails
+function ofst_cert_check_settings_configured()
+{
+    $validation = ofst_cert_validate_email_settings();
+    if (!$validation['valid']) {
+        error_log('Certificate email settings not configured: ' . implode(', ', $validation['errors']));
+        return false;
+    }
+    return true;
 }
 
 // Plugin activation hook
