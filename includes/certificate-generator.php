@@ -161,7 +161,7 @@ function ofst_cert_save_html_certificate($html, $certificate_id, $template_type)
     }
 
     // Generate secure token for this certificate
-    $access_token = wp_generate_password(32, false, false);
+    $access_token = wp_generate_uuid4();
 
     // Generate unique filename with token
     $hash = md5($certificate_id . time() . wp_rand());
